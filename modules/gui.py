@@ -6,13 +6,14 @@ import wx.lib.newevent
 from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.downloader import download_media
-
+from modules.app_updater import get_latest_version, run_updater
+version="1.0"
 # Define a custom event for progress updates using the modern way
 DownloadEvent, EVT_DOWNLOAD_UPDATE = wx.lib.newevent.NewEvent()
 
 class TeTubeFrame(wx.Frame):
     def __init__(self):
-        super().__init__(parent=None, title="Te_Tube - YouTube Search & Download", size=(800, 600))
+        super().__init__(parent=None, title="Te_Tube, version: "+version, size=(800, 600))
         
         self.results = []
         self.last_clipboard_text = ""
@@ -26,6 +27,9 @@ class TeTubeFrame(wx.Frame):
         self.clipboard_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.on_check_clipboard, self.clipboard_timer)
         self.clipboard_timer.Start(1000) # Check every 1 second
+        
+        # Check for app updates
+        wx.CallAfter(self.check_for_app_updates)
 
     def set_accessible_name(self, control, name):
         """Safely sets the accessible name for a control."""
@@ -33,6 +37,19 @@ class TeTubeFrame(wx.Frame):
         acc = control.GetAccessible()
         if acc:
             acc.SetName(name)
+
+    def check_for_app_updates(self):
+        """Checks for application updates and prompts the user."""
+        latest = get_latest_version()
+        if latest and latest != version:
+            msg = f"A new version is available!\n\nCurrent version: {version}\nLatest version: {latest}\n\nDo you want to update now?"
+            dlg = wx.MessageDialog(self, msg, "Software Update", wx.YES_NO | wx.ICON_INFORMATION)
+            if dlg.ShowModal() == wx.ID_YES:
+                if run_updater():
+                    self.Close()
+                else:
+                    wx.MessageBox("Failed to launch updater.bat. please make sure it exists in the app folder.", "Error", wx.OK | wx.ICON_ERROR)
+            dlg.Destroy()
 
     def init_ui(self):
         panel = wx.Panel(self)

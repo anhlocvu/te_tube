@@ -3,6 +3,8 @@ import sys
 from modules.ytdlp_manager import ensure_ytdlp
 from modules.gui import start_gui
 
+
+
 def main():
     # Ensure dependencies in lib folder are accessible
     lib_path = os.path.join(os.getcwd(), "lib")
