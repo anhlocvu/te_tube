@@ -5,8 +5,8 @@ import re
 import wx.lib.newevent
 from modules.search_engine import search_youtube
 from modules.player import play_video
-from modules.downloader import download_media
 from modules.app_updater import get_latest_version, run_updater
+from modules.downloader import DOWNLOAD_DIR
 version="1.0"
 # Define a custom event for progress updates using the modern way
 DownloadEvent, EVT_DOWNLOAD_UPDATE = wx.lib.newevent.NewEvent()
@@ -68,6 +68,60 @@ class TeTubeFrame(wx.Frame):
 
         vbox.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 5)
         panel.SetSizer(vbox)
+
+        # Menu bar
+        self.setup_menu_bar()
+
+    def setup_menu_bar(self):
+        menubar = wx.MenuBar()
+        
+        # Main Menu
+        main_menu = wx.Menu()
+        
+        open_dir_item = main_menu.Append(wx.ID_ANY, "&Open download folder\tCtrl+D")
+        self.Bind(wx.EVT_MENU, self.on_open_download_folder, open_dir_item)
+        
+        check_update_item = main_menu.Append(wx.ID_ANY, "Check for &updates")
+        self.Bind(wx.EVT_MENU, self.on_manual_check_updates, check_update_item)
+        
+        main_menu.AppendSeparator()
+        
+        exit_item = main_menu.Append(wx.ID_EXIT, "E&xit\tAlt+F4")
+        self.Bind(wx.EVT_MENU, self.on_exit, exit_item)
+        
+        menubar.Append(main_menu, "&Main")
+        self.SetMenuBar(menubar)
+
+    def on_open_download_folder(self, event):
+        """Opens the download directory in file explorer."""
+        if not os.path.exists(DOWNLOAD_DIR):
+            os.makedirs(DOWNLOAD_DIR)
+        os.startfile(DOWNLOAD_DIR)
+
+    def on_manual_check_updates(self, event):
+        """Manually checks for updates and notifies the user even if they are up-to-date."""
+        self.SetTitle("Checking for updates...")
+        latest = get_latest_version()
+        self.SetTitle(f"Te_Tube, version: {version}")
+        
+        if latest:
+            if latest != version:
+                msg = f"A new version is available!\n\nCurrent version: {version}\nLatest version: {latest}\n\nDo you want to update now?"
+                dlg = wx.MessageDialog(self, msg, "Software Update", wx.YES_NO | wx.ICON_INFORMATION)
+                if dlg.ShowModal() == wx.ID_YES:
+                    if run_updater():
+                        self.Close()
+                    else:
+                        wx.MessageBox("Failed to launch updater.bat. please make sure it exists in the app folder.", "Error", wx.OK | wx.ICON_ERROR)
+                dlg.Destroy()
+            else:
+                wx.MessageBox(f"You are using the latest version (v{version}).", "Software Update", wx.OK | wx.ICON_INFORMATION)
+        else:
+            wx.MessageBox("Could not check for updates. Please check your internet connection.", "Update Error", wx.OK | wx.ICON_ERROR)
+
+    def on_exit(self, event):
+        """Exits the application."""
+        self.Close()
 
     def setup_search_tab(self):
         vbox = wx.BoxSizer(wx.VERTICAL)
