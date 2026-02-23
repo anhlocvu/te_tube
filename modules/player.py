@@ -4,24 +4,24 @@ import os
 FFPLAY_PATH = os.path.join(os.getcwd(), "lib", "ffplay.exe")
 YTDLP_PATH = os.path.join(os.getcwd(), "lib", "yt-dlp.exe")
 
-def play_video(url):
+def play_video(url, audio_only=False):
     """
     Plays a YouTube video URL using ffplay and yt-dlp.
     """
     # Use yt-dlp to get the stream URL and pipe it to ffplay
-    # Actually, ffplay can take the stream URL directly if we get it from ytdlp
-    # Or we can just let ffplay handle it if it has gnutls/openssl, 
-    # but the usual way with ytdlp is to get the best format URL.
-    
-    # Simpler: yt-dlp -g <url> gets the stream URL
     try:
-        cmd_get_url = [YTDLP_PATH, "-g", "-f", "best", url]
+        # For audio only, we might want bestaudio, otherwise best
+        fmt = "bestaudio" if audio_only else "best"
+        cmd_get_url = [YTDLP_PATH, "-g", "-f", fmt, url]
         stream_url = subprocess.check_output(cmd_get_url, text=True, encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW).strip()
         
         # Now play with ffplay
-        # -nodisp if we wanted audio only, but ffplay by default shows video if available.
-        # User said "play", so we use ffplay.
-        subprocess.Popen([FFPLAY_PATH, "-autoexit", stream_url], creationflags=subprocess.CREATE_NO_WINDOW)
+        # Using -showmode 1 (waves) instead of -nodisp to allow keyboard controls
+        ffplay_cmd = [FFPLAY_PATH, "-autoexit", "-window_title", f"Playing: {url}", stream_url]
+        if audio_only:
+            ffplay_cmd.extend(["-showmode", "1"])
+            
+        subprocess.Popen(ffplay_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
     except Exception as e:
         print(f"Error playing video: {e}")
 

@@ -3,11 +3,16 @@ import os
 import threading
 import re
 import wx.lib.newevent
+import json
+import webbrowser
 from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
-from modules.downloader import DOWNLOAD_DIR
+from modules.downloader import DOWNLOAD_DIR, download_media
 version="1.0"
+
+FAVORITES_FILE = "favorites.json"
+WATCH_HISTORY_FILE = "watch_history.json"
 # Define a custom event for progress updates using the modern way
 DownloadEvent, EVT_DOWNLOAD_UPDATE = wx.lib.newevent.NewEvent()
 
@@ -16,6 +21,8 @@ class TeTubeFrame(wx.Frame):
         super().__init__(parent=None, title="Te_Tube, version: "+version, size=(800, 600))
         
         self.results = []
+        self.favorites = self.load_data(FAVORITES_FILE)
+        self.history = self.load_data(WATCH_HISTORY_FILE)
         self.last_clipboard_text = ""
         self.init_ui()
         self.Centre()
@@ -58,12 +65,18 @@ class TeTubeFrame(wx.Frame):
         # Tab control
         self.notebook = wx.Notebook(panel)
         self.search_tab = wx.Panel(self.notebook)
+        self.favorite_tab = wx.Panel(self.notebook)
+        self.history_tab = wx.Panel(self.notebook)
         self.process_link_tab = wx.Panel(self.notebook)
         
         self.notebook.AddPage(self.search_tab, "Search")
+        self.notebook.AddPage(self.favorite_tab, "Favorite Videos")
+        self.notebook.AddPage(self.history_tab, "Watch History")
         self.notebook.AddPage(self.process_link_tab, "Process via link")
 
         self.setup_search_tab()
+        self.setup_favorite_tab()
+        self.setup_history_tab()
         self.setup_process_link_tab()
 
         vbox.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 5)
@@ -184,10 +197,70 @@ class TeTubeFrame(wx.Frame):
         self.set_accessible_name(download_button, "Download")
         
         hbox2.Add(play_button, 1, wx.ALL | wx.EXPAND, 5)
+        
+        play_audio_button = wx.Button(self.process_link_tab, label="Play as Audio")
+        play_audio_button.Bind(wx.EVT_BUTTON, self.on_play_link_audio)
+        self.set_accessible_name(play_audio_button, "Play as Audio")
+        hbox2.Add(play_audio_button, 1, wx.ALL | wx.EXPAND, 5)
+
         hbox2.Add(download_button, 1, wx.ALL | wx.EXPAND, 5)
         vbox.Add(hbox2, 0, wx.EXPAND | wx.ALL, 5)
         
         self.process_link_tab.SetSizer(vbox)
+
+    def setup_favorite_tab(self):
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        self.favorite_list = wx.ListBox(self.favorite_tab, style=wx.LB_SINGLE)
+        self.favorite_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_favorite)
+        self.favorite_list.Bind(wx.EVT_CONTEXT_MENU, self.on_favorite_context_menu)
+        self.set_accessible_name(self.favorite_list, "Favorite Videos List")
+        vbox.Add(self.favorite_list, 1, wx.EXPAND | wx.ALL, 5)
+        self.favorite_tab.SetSizer(vbox)
+        self.update_favorite_listbox()
+
+    def setup_history_tab(self):
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        self.history_list = wx.ListBox(self.history_tab, style=wx.LB_SINGLE)
+        self.history_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_history)
+        self.history_list.Bind(wx.EVT_CONTEXT_MENU, self.on_history_context_menu)
+        self.set_accessible_name(self.history_list, "Watch History List")
+        vbox.Add(self.history_list, 1, wx.EXPAND | wx.ALL, 5)
+        self.history_tab.SetSizer(vbox)
+        self.update_history_listbox()
+
+    def load_data(self, filename):
+        if os.path.exists(filename):
+            try:
+                with open(filename, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except:
+                return []
+        return []
+
+    def save_data(self, filename, data):
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+
+    def update_favorite_listbox(self):
+        self.favorite_list.Clear()
+        for item in self.favorites:
+            display_text = f"{item['title']} - {item.get('uploader', 'Unknown')}"
+            self.favorite_list.Append(display_text)
+
+    def update_history_listbox(self):
+        self.history_list.Clear()
+        for item in reversed(self.history): # Show newest first
+            display_text = f"{item['title']} - {item.get('uploader', 'Unknown')}"
+            self.history_list.Append(display_text)
+
+    def add_to_history(self, video_data):
+        # Check if already in history, remove old entry and add to top
+        self.history = [h for h in self.history if h['url'] != video_data['url']]
+        self.history.append(video_data)
+        if len(self.history) > 100: # Limit history
+            self.history.pop(0)
+        self.save_data(WATCH_HISTORY_FILE, self.history)
+        wx.CallAfter(self.update_history_listbox)
 
     def on_search(self, event):
         query = self.search_input.GetValue()
@@ -216,31 +289,57 @@ class TeTubeFrame(wx.Frame):
     def on_play(self, event):
         selection = self.result_list.GetSelection()
         if selection != wx.NOT_FOUND:
-            video_url = self.results[selection]['url']
-            self.play_url(video_url)
+            video_data = self.results[selection]
+            self.play_url(video_data['url'])
+            self.add_to_history(video_data)
+
+    def on_play_audio(self, event):
+        selection = self.result_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            video_data = self.results[selection]
+            self.play_url(video_data['url'], audio_only=True)
+            self.add_to_history(video_data)
 
     def on_play_link(self, event):
         url = self.link_input.GetValue().strip()
         if not url:
             wx.MessageBox("Please enter a video link first.", "Error", wx.OK | wx.ICON_WARNING)
             return
+        # We don't have full info, but we can try to get it or just play
         self.play_url(url)
+        self.add_to_history({'title': 'Video from link', 'url': url, 'uploader': 'Unknown'})
 
-    def play_url(self, url):
+    def on_play_link_audio(self, event):
+        url = self.link_input.GetValue().strip()
+        if not url:
+            wx.MessageBox("Please enter a video link first.", "Error", wx.OK | wx.ICON_WARNING)
+            return
+        self.play_url(url, audio_only=True)
+        self.add_to_history({'title': 'Video from link', 'url': url, 'uploader': 'Unknown'})
+
+    def play_url(self, url, audio_only=False):
         try:
-            play_video(url)
+            play_video(url, audio_only=audio_only)
         except Exception as e:
             wx.MessageBox(f"Error playing video: {e}", "Playback Error", wx.OK | wx.ICON_ERROR)
 
     def on_key_down(self, event):
         keycode = event.GetKeyCode()
         if keycode in [wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER]:
-            # Trigger play only if search box is NOT focused
-            # OR if focus is in result_list
             focused = wx.Window.FindFocus()
-            if focused != self.search_input:
+            if focused == self.result_list:
                 self.on_play(None)
-                return # Don't Skip() if we handle it
+                return
+            elif focused == self.favorite_list:
+                self.on_play_favorite(None)
+                return
+            elif focused == self.history_list:
+                self.on_play_history(None)
+                return
+            elif focused == self.search_input:
+                # Let the normal on_search handle it
+                event.Skip()
+                return
         
         event.Skip()
 
@@ -298,15 +397,139 @@ class TeTubeFrame(wx.Frame):
         menu.Destroy()
 
     def on_copy_link(self, event):
-        selection = self.result_list.GetSelection()
+        # Determine which list is active
+        focused = wx.Window.FindFocus()
+        source_list = None
+        source_data = []
+        
+        if focused == self.result_list:
+            source_list = self.result_list
+            source_data = self.results
+        elif focused == self.favorite_list:
+            source_list = self.favorite_list
+            source_data = self.favorites
+        elif focused == self.history_list:
+            source_list = self.history_list
+            source_data = list(reversed(self.history))
+        
+        if not source_list: return
+
+        selection = source_list.GetSelection()
         if selection != wx.NOT_FOUND:
-            video_url = self.results[selection]['url']
+            video_url = source_data[selection]['url']
             if wx.TheClipboard.Open():
                 wx.TheClipboard.SetData(wx.TextDataObject(video_url))
                 wx.TheClipboard.Close()
                 # Update last_clipboard_text to prevent Te_Tube from detecting its own copy
                 self.last_clipboard_text = video_url
                 wx.MessageBox("Link copied to clipboard!", "Success", wx.OK | wx.ICON_INFORMATION)
+
+    def on_open_in_browser(self, event):
+        focused = wx.Window.FindFocus()
+        source_data = []
+        
+        if focused == self.result_list:
+            source_data = self.results
+        elif focused == self.favorite_list:
+            source_data = self.favorites
+        elif focused == self.history_list:
+            source_data = list(reversed(self.history))
+        
+        if not source_data: return
+
+        source_list = focused # focused is the listbox
+        selection = source_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            video_url = source_data[selection]['url']
+            webbrowser.open(video_url)
+
+    def on_go_to_channel(self, event):
+        focused = wx.Window.FindFocus()
+        source_data = []
+        
+        if focused == self.result_list:
+            source_data = self.results
+        elif focused == self.favorite_list:
+            source_data = self.favorites
+        elif focused == self.history_list:
+            source_data = list(reversed(self.history))
+        
+        if not source_data: return
+
+        source_list = focused
+        selection = source_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            item = source_data[selection]
+            uploader_url = item.get('uploader_url')
+            if uploader_url:
+                webbrowser.open(uploader_url)
+            else:
+                msg = "Channel URL not available for this entry.\n\nNote: Older history/favorite entries saved before the 'Go to Channel' feature was added do not have this information."
+                wx.MessageBox(msg, "Info", wx.OK | wx.ICON_INFORMATION)
+
+    def on_add_favorite(self, event):
+        selection = self.result_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            video_data = self.results[selection]
+            # Check if already in favorites
+            if any(f['url'] == video_data['url'] for f in self.favorites):
+                wx.MessageBox("This video is already in your favorites.", "Info", wx.OK | wx.ICON_INFORMATION)
+                return
+            
+            self.favorites.append(video_data)
+            self.save_data(FAVORITES_FILE, self.favorites)
+            self.update_favorite_listbox()
+            wx.MessageBox("Added to favorites!", "Success", wx.OK | wx.ICON_INFORMATION)
+
+    def on_remove_favorite(self, event):
+        selection = self.favorite_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            del self.favorites[selection]
+            self.save_data(FAVORITES_FILE, self.favorites)
+            self.update_favorite_listbox()
+            wx.MessageBox("Removed from favorites.", "Success", wx.OK | wx.ICON_INFORMATION)
+
+    def on_remove_history(self, event):
+        selection = self.history_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            # History is displayed reversed
+            actual_index = len(self.history) - 1 - selection
+            del self.history[actual_index]
+            self.save_data(WATCH_HISTORY_FILE, self.history)
+            self.update_history_listbox()
+            wx.MessageBox("Removed from history.", "Success", wx.OK | wx.ICON_INFORMATION)
+
+    def on_play_favorite(self, event):
+        selection = self.favorite_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            video_data = self.favorites[selection]
+            self.play_url(video_data['url'])
+            self.add_to_history(video_data)
+
+    def on_play_favorite_audio(self, event):
+        selection = self.favorite_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            video_data = self.favorites[selection]
+            self.play_url(video_data['url'], audio_only=True)
+            self.add_to_history(video_data)
+
+    def on_play_history(self, event):
+        selection = self.history_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            # History is displayed reversed
+            actual_index = len(self.history) - 1 - selection
+            video_data = self.history[actual_index]
+            self.play_url(video_data['url'])
+            # Re-adding to history will move it to top
+            self.add_to_history(video_data)
+
+    def on_play_history_audio(self, event):
+        selection = self.history_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            actual_index = len(self.history) - 1 - selection
+            video_data = self.history[actual_index]
+            self.play_url(video_data['url'], audio_only=True)
+            self.add_to_history(video_data)
 
     def on_context_menu(self, event):
         selection = self.result_list.GetSelection()
@@ -317,8 +540,20 @@ class TeTubeFrame(wx.Frame):
         play_item = menu.Append(wx.ID_ANY, "&Play\tEnter")
         self.Bind(wx.EVT_MENU, self.on_play, play_item)
 
+        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
+        self.Bind(wx.EVT_MENU, self.on_play_audio, play_audio_item)
+
+        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
+        self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
+
+        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel")
+        self.Bind(wx.EVT_MENU, self.on_go_to_channel, go_channel_item)
+
         copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
         self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
+
+        favorite_item = menu.Append(wx.ID_ANY, "&Add Favorite")
+        self.Bind(wx.EVT_MENU, self.on_add_favorite, favorite_item)
 
         download_menu = wx.Menu()
         formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
@@ -331,6 +566,89 @@ class TeTubeFrame(wx.Frame):
         
         self.PopupMenu(menu)
         menu.Destroy()
+
+    def on_favorite_context_menu(self, event):
+        selection = self.favorite_list.GetSelection()
+        if selection == wx.NOT_FOUND:
+            return
+
+        menu = wx.Menu()
+        play_item = menu.Append(wx.ID_ANY, "&Play")
+        self.Bind(wx.EVT_MENU, self.on_play_favorite, play_item)
+
+        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
+        self.Bind(wx.EVT_MENU, self.on_play_favorite_audio, play_audio_item)
+
+        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
+        self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
+
+        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel")
+        self.Bind(wx.EVT_MENU, self.on_go_to_channel, go_channel_item)
+
+        copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
+        self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
+
+        remove_item = menu.Append(wx.ID_ANY, "&Remove from favorite")
+        self.Bind(wx.EVT_MENU, self.on_remove_favorite, remove_item)
+
+        download_menu = wx.Menu()
+        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
+        for label, fmt in formats:
+            item = download_menu.Append(wx.ID_ANY, label)
+            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download_favorite(f), item)
+        menu.AppendSubMenu(download_menu, "&Download")
+
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def on_history_context_menu(self, event):
+        selection = self.history_list.GetSelection()
+        if selection == wx.NOT_FOUND:
+            return
+
+        menu = wx.Menu()
+        play_item = menu.Append(wx.ID_ANY, "&Play")
+        self.Bind(wx.EVT_MENU, self.on_play_history, play_item)
+
+        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
+        self.Bind(wx.EVT_MENU, self.on_play_history_audio, play_audio_item)
+
+        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
+        self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
+
+        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel")
+        self.Bind(wx.EVT_MENU, self.on_go_to_channel, go_channel_item)
+
+        copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
+        self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
+
+        remove_item = menu.Append(wx.ID_ANY, "&Remove from history")
+        self.Bind(wx.EVT_MENU, self.on_remove_history, remove_item)
+
+        download_menu = wx.Menu()
+        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
+        for label, fmt in formats:
+            item = download_menu.Append(wx.ID_ANY, label)
+            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download_history(f), item)
+        menu.AppendSubMenu(download_menu, "&Download")
+
+        self.PopupMenu(menu)
+        menu.Destroy()
+
+    def on_download_favorite(self, fmt):
+        selection = self.favorite_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            video_url = self.favorites[selection]['url']
+            title = self.favorites[selection]['title']
+            self.start_download(video_url, title, fmt)
+
+    def on_download_history(self, fmt):
+        selection = self.history_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            actual_index = len(self.history) - 1 - selection
+            video_url = self.history[actual_index]['url']
+            title = self.history[actual_index]['title']
+            self.start_download(video_url, title, fmt)
 
     def on_download(self, fmt):
         selection = self.result_list.GetSelection()

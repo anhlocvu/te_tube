@@ -28,6 +28,7 @@ def search_youtube(query, max_results=20):
                     'url': data.get('url') or f"https://www.youtube.com/watch?v={data.get('id')}",
                     'duration': data.get('duration_string', 'N/A'),
                     'uploader': data.get('uploader', 'Unknown'),
+                    'uploader_url': data.get('uploader_url') or data.get('channel_url'),
                     'id': data.get('id')
                 })
         return videos
