@@ -9,7 +9,7 @@ from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
 from modules.downloader import DOWNLOAD_DIR, download_media
-version="1.0"
+version="1.1"
 
 FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
@@ -49,7 +49,7 @@ class TeTubeFrame(wx.Frame):
         """Checks for application updates and prompts the user."""
         latest = get_latest_version()
         if latest and latest != version:
-            msg = f"A new version is available!\n\nCurrent version: {version}\nLatest version: {latest}\n\nDo you want to update now?"
+            msg = f"A new version is available!\n\nCurrent version: {version}\n, Latest version: {latest}\n\nDo you want to update now?"
             dlg = wx.MessageDialog(self, msg, "Software Update", wx.YES_NO | wx.ICON_INFORMATION)
             if dlg.ShowModal() == wx.ID_YES:
                 if run_updater():
