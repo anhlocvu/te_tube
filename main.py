@@ -1,16 +1,18 @@
 import os
 import sys
+
+# Ensure dependencies in lib folder are accessible before other imports
+lib_path = os.path.join(os.getcwd(), "lib")
+if os.name == 'nt' and os.path.exists(lib_path):
+    os.add_dll_directory(lib_path)
+    if lib_path not in os.environ["PATH"]:
+        os.environ["PATH"] = lib_path + os.pathsep + os.environ["PATH"]
+
 from modules.ytdlp_manager import ensure_ytdlp
 from modules.gui import start_gui
 
 
-
 def main():
-    # Ensure dependencies in lib folder are accessible
-    lib_path = os.path.join(os.getcwd(), "lib")
-    if lib_path not in os.environ["PATH"]:
-        os.environ["PATH"] = lib_path + os.pathsep + os.environ["PATH"]
-
     print("--- Te_Tube Startup ---")
     
     # Check/Update yt-dlp first as requested

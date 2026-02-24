@@ -1,31 +1,46 @@
-import subprocess
 import os
+import mpv
+import threading
 
-FFPLAY_PATH = os.path.join(os.getcwd(), "lib", "ffplay.exe")
-YTDLP_PATH = os.path.join(os.getcwd(), "lib", "yt-dlp.exe")
+def _player_worker(url, audio_only):
+    """
+    Worker thread for mpv playback.
+    """
+    try:
+        # Create MPV instance with appropriate options
+        player = mpv.MPV(
+            ytdl=True,
+            ytdl_format="best",
+            input_default_bindings=True,
+            input_vo_keyboard=True,
+            osc=True
+        )
+        
+        if audio_only:
+            player.vid = False
+            player['force-window'] = 'yes'
+        
+        player['title'] = f"Te_Tube: {url}"
+        
+        # Play the URL
+        player.play(url)
+        
+        # Wait for playback to finish or window to be closed
+        # This keeps the player object alive as long as necessary
+        player.wait_for_playback()
+        
+        # Explicitly terminate to be safe
+        player.terminate()
+        
+    except Exception as e:
+        print(f"Error in player thread: {e}")
 
 def play_video(url, audio_only=False):
     """
-    Plays a YouTube video URL using ffplay and yt-dlp.
+    Plays a YouTube video URL using mpv in a separate thread.
     """
-    # Use yt-dlp to get the stream URL and pipe it to ffplay
-    try:
-        # For audio only, we might want bestaudio, otherwise best
-        fmt = "bestaudio" if audio_only else "best"
-        cmd_get_url = [YTDLP_PATH, "-g", "-f", fmt, url]
-        stream_url = subprocess.check_output(cmd_get_url, text=True, encoding='utf-8', errors='replace', creationflags=subprocess.CREATE_NO_WINDOW).strip()
-        
-        # Now play with ffplay
-        # Using -showmode 1 (waves) instead of -nodisp to allow keyboard controls
-        ffplay_cmd = [FFPLAY_PATH, "-autoexit", "-window_title", f"Playing: {url}", stream_url]
-        if audio_only:
-            ffplay_cmd.extend(["-showmode", "1"])
-            
-        subprocess.Popen(ffplay_cmd, creationflags=subprocess.CREATE_NO_WINDOW)
-    except Exception as e:
-        print(f"Error playing video: {e}")
+    thread = threading.Thread(target=_player_worker, args=(url, audio_only), daemon=True)
+    thread.start()
 
 if __name__ == "__main__":
-    # Test play (requires a valid URL)
-    # play_video("https://www.youtube.com/watch?v=aqvZeN-r_t4")
     pass
