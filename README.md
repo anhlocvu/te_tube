@@ -47,3 +47,7 @@ uv run main.py
 ```
 
 and the code will be executed.
+
+## Note about the libraries: 
+
+there are some quite heavy libraries that cannot be uploaded to GitHub, so I had to compress them into a zip file. If anyone sees a zip file, please right-click on it and select 'Extract Here'.
