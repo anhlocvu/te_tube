@@ -73,11 +73,16 @@ class TeTubeFrame(wx.Frame):
         self.notebook.AddPage(self.favorite_tab, "Favorite Videos")
         self.notebook.AddPage(self.history_tab, "Watch History")
         self.notebook.AddPage(self.process_link_tab, "Process via link")
+        
+        # Help tab
+        self.help_tab = wx.Panel(self.notebook)
+        self.notebook.AddPage(self.help_tab, "Help")
 
         self.setup_search_tab()
         self.setup_favorite_tab()
         self.setup_history_tab()
         self.setup_process_link_tab()
+        self.setup_help_tab()
 
         vbox.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 5)
         panel.SetSizer(vbox)
@@ -96,6 +101,11 @@ class TeTubeFrame(wx.Frame):
         
         check_update_item = main_menu.Append(wx.ID_ANY, "Check for &updates")
         self.Bind(wx.EVT_MENU, self.on_manual_check_updates, check_update_item)
+        
+        main_menu.AppendSeparator()
+        
+        help_item = main_menu.Append(wx.ID_ANY, "H&elp\tF1")
+        self.Bind(wx.EVT_MENU, self.on_help_menu, help_item)
         
         main_menu.AppendSeparator()
         
@@ -208,6 +218,105 @@ class TeTubeFrame(wx.Frame):
         
         self.process_link_tab.SetSizer(vbox)
 
+    def setup_help_tab(self):
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        # Top label
+        label = wx.StaticText(self.help_tab, label="Help Documentation")
+        self.set_accessible_name(label, "Help Documentation")
+        vbox.Add(label, 0, wx.ALL | wx.CENTER, 10)
+        
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # File list
+        self.help_file_list = wx.ListBox(self.help_tab, style=wx.LB_SINGLE)
+        self.help_file_list.Bind(wx.EVT_LISTBOX, self.on_help_file_select)
+        self.set_accessible_name(self.help_file_list, "Documentation Files")
+        hbox.Add(self.help_file_list, 1, wx.EXPAND | wx.ALL, 5)
+        
+        # Viewer area
+        viewer_vbox = wx.BoxSizer(wx.VERTICAL)
+        content_label = wx.StaticText(self.help_tab, label="Content:")
+        self.set_accessible_name(content_label, "Content")
+        viewer_vbox.Add(content_label, 0, wx.LEFT | wx.TOP, 5)
+        
+        self.help_viewer = wx.TextCtrl(self.help_tab, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH)
+        self.set_accessible_name(self.help_viewer, "Content")
+        viewer_vbox.Add(self.help_viewer, 1, wx.EXPAND | wx.ALL, 5)
+        
+        hbox.Add(viewer_vbox, 2, wx.EXPAND)
+        
+        vbox.Add(hbox, 1, wx.EXPAND)
+        
+        # Buttons
+        btn_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        
+        return_btn = wx.Button(self.help_tab, label="Return")
+        return_btn.Bind(wx.EVT_BUTTON, self.on_help_return)
+        self.set_accessible_name(return_btn, "Return to Search")
+        
+        close_file_btn = wx.Button(self.help_tab, label="Close File")
+        close_file_btn.Bind(wx.EVT_BUTTON, self.on_help_close_file)
+        self.set_accessible_name(close_file_btn, "Clear text viewer")
+        
+        btn_hbox.Add(return_btn, 1, wx.ALL | wx.EXPAND, 5)
+        btn_hbox.Add(close_file_btn, 1, wx.ALL | wx.EXPAND, 5)
+        
+        vbox.Add(btn_hbox, 0, wx.EXPAND | wx.ALL, 5)
+        
+        self.help_tab.SetSizer(vbox)
+        self.update_help_file_list()
+
+    def update_help_file_list(self):
+        """Scans the docks directory for .txt files and updates the listbox."""
+        self.help_file_list.Clear()
+        docks_path = os.path.join(os.getcwd(), "docks")
+        if not os.path.exists(docks_path):
+            return
+            
+        files = [f for f in os.listdir(docks_path) if f.lower().endswith(".txt")]
+        for f in sorted(files):
+            # Strip .txt extension for display
+            display_name = f[:-4] if f.lower().endswith(".txt") else f
+            self.help_file_list.Append(display_name)
+
+    def on_help_menu(self, event):
+        """Switches to the help tab and refreshes the file list."""
+        page_count = self.notebook.GetPageCount()
+        for i in range(page_count):
+            if self.notebook.GetPageText(i) == "Help":
+                self.notebook.SetSelection(i)
+                self.update_help_file_list()
+                if self.help_file_list.GetCount() > 0:
+                    self.help_file_list.SetFocus()
+                break
+
+    def on_help_file_select(self, event):
+        """Loads and displays the selected help file."""
+        selection = self.help_file_list.GetSelection()
+        if selection == wx.NOT_FOUND:
+            return
+            
+        filename = self.help_file_list.GetString(selection)
+        # Add .txt extension back for file access
+        filepath = os.path.join(os.getcwd(), "docks", filename + ".txt")
+        
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+                self.help_viewer.SetValue(content)
+        except Exception as e:
+            wx.MessageBox(f"Error reading file: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def on_help_return(self, event):
+        """Returns to the search tab."""
+        self.notebook.SetSelection(0)
+
+    def on_help_close_file(self, event):
+        """Clears the text viewer."""
+        self.help_viewer.Clear()
+        self.help_file_list.SetFocus()
+
     def setup_favorite_tab(self):
         vbox = wx.BoxSizer(wx.VERTICAL)
         self.favorite_list = wx.ListBox(self.favorite_tab, style=wx.LB_SINGLE)
@@ -281,7 +390,7 @@ class TeTubeFrame(wx.Frame):
         except Exception as e:
             wx.MessageBox(f"Error during search: {e}", "Search Error", wx.OK | wx.ICON_ERROR)
         
-        self.SetTitle("Te_Tube - YouTube Search & Download")
+        self.SetTitle("Te_Tube, version: "+version)
         if self.result_list.GetCount() > 0:
             self.result_list.SetSelection(0)
             self.result_list.SetFocus()
