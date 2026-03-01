@@ -1,0 +1,42 @@
+TE_TUBE USER GUIDE
+
+Welcome to Te_Tube! This guide will help you navigate and use the software effectively.
+
+MAIN INTERFACE
+The application is organized into five main tabs:
+1. Search: Find videos by entering keywords.
+2. Favorite Videos: Quick access to your saved content.
+3. Watch History: Review videos you've previously watched.
+4. Process via link: Directly play or download a video using its URL.
+5. Help: Access this documentation.
+
+HOW TO SEARCH AND PLAY
+1. Navigate to the Search tab.
+2. Type your keywords into the "Search Query" box and press Enter.
+3. Use the Arrow keys to browse the results list.
+4. Press Enter on a selected item to start playing the video.
+5. Alternatively, right-click (or press the Menu key or Shift+F10) to open the context menu for more options like "Play as Audio".
+
+HANDLING LINKS FROM CLIPBOARD
+Te_Tube monitors your clipboard in the background. If you copy a YouTube link from your browser or another app:
+1. Te_Tube will pop up a dialog.
+2. You can choose to Play, Download, or Cancel.
+3. This saves you from manually pasting links into the application.
+
+DOWNLOADING CONTENT
+You can download any video from the Search, Favorites, or History lists:
+1. Open the context menu on the desired item.
+2. Go to the Download sub-menu.
+3. Select your preferred format:
+   - MP4: High-quality video.
+   - MP3 or WAV: Audio formats for music players.
+   - M4A: Standard audio format.
+4. A progress dialog will appear showing the download status. Files are saved in the download folder.
+
+MANAGING FAVORITES AND HISTORY
+- Add to Favorites: Right-click an item in the search results and select "Add Favorite".
+- Remove: Right-click an item in the Favorites or History tab and select the remove option.
+- Go to Channel: You can quickly visit the creator's YouTube channel from the context menu.
+
+SOFTWARE UPDATES
+The app checks for updates on startup. If a new version is available, you will be prompted to update. You can also manually check for updates via the Main menu.
