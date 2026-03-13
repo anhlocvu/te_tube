@@ -5,16 +5,101 @@ import re
 import wx.lib.newevent
 import json
 import webbrowser
+import configparser
 from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
-from modules.downloader import DOWNLOAD_DIR, download_media
+from modules.downloader import get_default_download_dir, download_media
+
 version="1.1"
 
 FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
+SETTINGS_FILE = "setting.ini"
+
 # Define a custom event for progress updates using the modern way
 DownloadEvent, EVT_DOWNLOAD_UPDATE = wx.lib.newevent.NewEvent()
+
+class SettingsDialog(wx.Dialog):
+    def __init__(self, parent, current_settings):
+        super().__init__(parent, title="Settings", size=(500, 300))
+        self.settings = current_settings
+        self.init_ui()
+        self.Centre()
+
+    def init_ui(self):
+        panel = wx.Panel(self)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+
+        # General Section
+        sb = wx.StaticBox(panel, label="General Settings")
+        sb_sizer = wx.StaticBoxSizer(sb, wx.VERTICAL)
+
+        # Download directory
+        hbox1 = wx.BoxSizer(wx.HORIZONTAL)
+        dir_label = wx.StaticText(panel, label="Download Directory:")
+        self.dir_input = wx.TextCtrl(panel, value=self.settings.get('General', 'download_dir'))
+        browse_btn = wx.Button(panel, label="Browse...")
+        browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
+
+        hbox1.Add(dir_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
+        hbox1.Add(self.dir_input, 1, wx.EXPAND | wx.RIGHT, 5)
+        hbox1.Add(browse_btn, 0)
+        sb_sizer.Add(hbox1, 0, wx.EXPAND | wx.ALL, 10)
+
+        vbox.Add(sb_sizer, 1, wx.EXPAND | wx.ALL, 10)
+
+        # Action Buttons
+        hbox2 = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Use wx.ID_OK and SetDefault to allow Enter key to trigger this
+        ok_btn = wx.Button(panel, id=wx.ID_OK, label="OK")
+        ok_btn.Bind(wx.EVT_BUTTON, self.on_ok)
+        ok_btn.SetDefault()
+        
+        # Use wx.ID_CANCEL to allow Escape key to trigger this
+        cancel_btn = wx.Button(panel, id=wx.ID_CANCEL, label="Cancel")
+        cancel_btn.Bind(wx.EVT_BUTTON, self.on_cancel)
+
+        hbox2.Add(ok_btn, 1, wx.RIGHT, 10)
+        hbox2.Add(cancel_btn, 1)
+        vbox.Add(hbox2, 0, wx.ALIGN_CENTER | wx.ALL, 10)
+
+        panel.SetSizer(vbox)
+
+        # Accessibility
+        self.set_accessible_name(self.dir_input, "Download Directory Path")
+        self.set_accessible_name(browse_btn, "Browse for folder")
+        self.set_accessible_name(ok_btn, "Save settings and close")
+        self.set_accessible_name(cancel_btn, "Cancel changes and close")
+
+    def set_accessible_name(self, control, name):
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
+    def on_browse(self, event):
+        default_dir = self.dir_input.GetValue()
+        dlg = wx.DirDialog(self, "Choose Download Directory", default_dir, style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.dir_input.SetValue(dlg.GetPath())
+        dlg.Destroy()
+
+    def on_ok(self, event):
+        new_dir = self.dir_input.GetValue().strip()
+        if not os.path.exists(new_dir):
+            try:
+                os.makedirs(new_dir)
+            except:
+                wx.MessageBox("Could not create or access the selected directory. Please choose another one.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+        
+        self.settings['General']['download_dir'] = new_dir
+        self.EndModal(wx.ID_OK)
+
+    def on_cancel(self, event):
+        self.EndModal(wx.ID_CANCEL)
 
 class TeTubeFrame(wx.Frame):
     def __init__(self):
@@ -23,6 +108,7 @@ class TeTubeFrame(wx.Frame):
         self.results = []
         self.favorites = self.load_data(FAVORITES_FILE)
         self.history = self.load_data(WATCH_HISTORY_FILE)
+        self.load_settings()
         self.last_clipboard_text = ""
         self.init_ui()
         self.Centre()
@@ -37,6 +123,29 @@ class TeTubeFrame(wx.Frame):
         
         # Check for app updates
         wx.CallAfter(self.check_for_app_updates)
+
+    def load_settings(self):
+        self.config = configparser.ConfigParser()
+        if os.path.exists(SETTINGS_FILE):
+            self.config.read(SETTINGS_FILE, encoding='utf-8')
+        
+        # Ensure default values exist
+        if 'General' not in self.config:
+            self.config['General'] = {}
+        
+        if 'download_dir' not in self.config['General']:
+            self.config['General']['download_dir'] = get_default_download_dir()
+            self.save_settings()
+
+    def save_settings(self):
+        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+            self.config.write(f)
+
+    def on_settings(self, event):
+        dlg = SettingsDialog(self, self.config)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.save_settings()
+        dlg.Destroy()
 
     def set_accessible_name(self, control, name):
         """Safely sets the accessible name for a control."""
@@ -99,6 +208,9 @@ class TeTubeFrame(wx.Frame):
         open_dir_item = main_menu.Append(wx.ID_ANY, "&Open download folder\tCtrl+D")
         self.Bind(wx.EVT_MENU, self.on_open_download_folder, open_dir_item)
         
+        settings_item = main_menu.Append(wx.ID_ANY, "&Settings\tF4")
+        self.Bind(wx.EVT_MENU, self.on_settings, settings_item)
+        
         check_update_item = main_menu.Append(wx.ID_ANY, "Check for &updates")
         self.Bind(wx.EVT_MENU, self.on_manual_check_updates, check_update_item)
         
@@ -116,10 +228,15 @@ class TeTubeFrame(wx.Frame):
         self.SetMenuBar(menubar)
 
     def on_open_download_folder(self, event):
-        """Opens the download directory in file explorer."""
-        if not os.path.exists(DOWNLOAD_DIR):
-            os.makedirs(DOWNLOAD_DIR)
-        os.startfile(DOWNLOAD_DIR)
+        """Opens the configured download directory in file explorer."""
+        download_dir = self.config['General']['download_dir']
+        if not os.path.exists(download_dir):
+            try:
+                os.makedirs(download_dir)
+            except:
+                wx.MessageBox("Could not access or create the download directory.", "Error", wx.OK | wx.ICON_ERROR)
+                return
+        os.startfile(download_dir)
 
     def on_manual_check_updates(self, event):
         """Manually checks for updates and notifies the user even if they are up-to-date."""
@@ -824,15 +941,17 @@ class TeTubeFrame(wx.Frame):
         menu.Destroy()
 
     def start_download(self, url, title, fmt):
-        dialog = DownloadProgressDialog(self, title, url, fmt)
+        download_dir = self.config['General']['download_dir']
+        dialog = DownloadProgressDialog(self, title, url, fmt, download_dir)
         dialog.Show()
 
 class DownloadThread(threading.Thread):
-    def __init__(self, win, url, fmt):
+    def __init__(self, win, url, fmt, download_dir):
         super().__init__()
         self.win = win
         self.url = url
         self.fmt = fmt
+        self.download_dir = download_dir
         self.daemon = True
 
     def run(self):
@@ -840,13 +959,13 @@ class DownloadThread(threading.Thread):
             def callback(p):
                 wx.PostEvent(self.win, DownloadEvent(**p))
             
-            final_path = download_media(self.url, self.fmt, callback)
+            final_path = download_media(self.url, self.fmt, callback, self.download_dir)
             wx.PostEvent(self.win, DownloadEvent(status='finished', path=final_path))
         except Exception as e:
             wx.PostEvent(self.win, DownloadEvent(status='error', error=str(e)))
 
 class DownloadProgressDialog(wx.Dialog):
-    def __init__(self, parent, title, url, fmt):
+    def __init__(self, parent, title, url, fmt, download_dir):
         super().__init__(parent, title="Downloading...", size=(400, 180))
         self.video_title = title
         self.last_percent = -1
@@ -872,7 +991,7 @@ class DownloadProgressDialog(wx.Dialog):
         
         self.Bind(EVT_DOWNLOAD_UPDATE, self.on_update)
         
-        self.thread = DownloadThread(self, url, fmt)
+        self.thread = DownloadThread(self, url, fmt, download_dir)
         self.thread.start()
 
     def set_accessible_name(self, control, name):
@@ -894,12 +1013,10 @@ class DownloadProgressDialog(wx.Dialog):
             # Clean up the status line (remove [download])
             clean_status = event.line.replace('[download]', '').strip()
             self.status_label.SetLabel(clean_status)
-            # AVOID set_accessible_name on every tick as it's expensive and causes freeze
             
         elif status == 'finished':
             self.gauge.SetValue(100)
             self.status_label.SetLabel("Download Complete!")
-            # Final accessibility update when finished is okay
             self.set_accessible_name(self.status_label, "Status: Download Complete")
             
             path = event.path or "Unknown location"
