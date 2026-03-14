@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "te_tube"
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.3"
 #define MyAppPublisher "technology entertainment"
 #define MyAppURL "http://lc.ktgame207.com/"
 #define MyAppExeName "te_tube.exe"
@@ -24,7 +24,7 @@ DisableProgramGroupPage=yes
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
 OutputDir=D:\python code\te_tube
-OutputBaseFilename=te_tube v1.1 setup
+OutputBaseFilename=te_tube v1.3 setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
