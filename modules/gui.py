@@ -7,12 +7,13 @@ import json
 import webbrowser
 import configparser
 import speech_recognition as sr
+import pygame
 from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
 from modules.downloader import get_default_download_dir, download_media
 
-version="1.1"
+version="1.2"
 
 FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
@@ -154,6 +155,16 @@ class TeTubeFrame(wx.Frame):
     def __init__(self):
         super().__init__(parent=None, title="Te_Tube, version: "+version, size=(800, 600))
         
+        # Initialize pygame mixer for sound effects
+        try:
+            pygame.mixer.init()
+            self.sound_start = pygame.mixer.Sound(os.path.join("sounds", "gg1.ogg"))
+            self.sound_end = pygame.mixer.Sound(os.path.join("sounds", "gg2.ogg"))
+        except Exception as e:
+            print(f"Error initializing sound effects: {e}")
+            self.sound_start = None
+            self.sound_end = None
+            
         self.results = []
         self.favorites = self.load_data(FAVORITES_FILE)
         self.history = self.load_data(WATCH_HISTORY_FILE)
@@ -339,6 +350,10 @@ class TeTubeFrame(wx.Frame):
         self.voice_button.SetLabel("Listening...")
         self.SetTitle("Listening for voice search...")
         
+        # Play start sound
+        if self.sound_start:
+            self.sound_start.play()
+        
         def do_speech():
             r = sr.Recognizer()
             lang = self.config.get('Speech', 'language', fallback='vi-VN')
@@ -346,6 +361,11 @@ class TeTubeFrame(wx.Frame):
                 r.adjust_for_ambient_noise(source, duration=0.5)
                 try:
                     audio = r.listen(source, timeout=5, phrase_time_limit=10)
+                    
+                    # Play end sound immediately after listening is done
+                    if self.sound_end:
+                        wx.CallAfter(self.sound_end.play)
+                        
                     text = r.recognize_google(audio, language=lang)
                     
                     def update_ui():
@@ -751,7 +771,8 @@ class TeTubeFrame(wx.Frame):
         menu.Append(wx.ID_ANY, "&Copy Link"); self.Bind(wx.EVT_MENU, self.on_copy_link)
         menu.Append(wx.ID_ANY, "&Remove from favorite"); self.Bind(wx.EVT_MENU, self.on_remove_favorite)
         download_menu = wx.Menu()
-        for label, fmt in formats: # Warning: formats not defined in this scope
+        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
+        for label, fmt in formats:
             item = download_menu.Append(wx.ID_ANY, label)
             self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download_favorite(f), item)
         menu.AppendSubMenu(download_menu, "&Download")
@@ -768,6 +789,7 @@ class TeTubeFrame(wx.Frame):
         menu.Append(wx.ID_ANY, "&Copy Link"); self.Bind(wx.EVT_MENU, self.on_copy_link)
         menu.Append(wx.ID_ANY, "&Remove from history"); self.Bind(wx.EVT_MENU, self.on_remove_history)
         download_menu = wx.Menu()
+        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
         for label, fmt in formats:
             item = download_menu.Append(wx.ID_ANY, label)
             self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download_history(f), item)
