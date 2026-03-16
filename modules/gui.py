@@ -99,11 +99,22 @@ class TeTubeFrame(wx.Frame):
         
         main_menu.AppendSeparator()
         
+        help_item = main_menu.Append(wx.ID_HELP, "&Help\tF1")
+        self.Bind(wx.EVT_MENU, self.on_help, help_item)
+        
+        main_menu.AppendSeparator()
+        
         exit_item = main_menu.Append(wx.ID_EXIT, "E&xit\tAlt+F4")
         self.Bind(wx.EVT_MENU, self.on_exit, exit_item)
         
         menubar.Append(main_menu, "&Main")
         self.SetMenuBar(menubar)
+
+    def on_help(self, event):
+        """Shows the help/documentation dialog."""
+        dlg = HelpDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def on_open_download_folder(self, event):
         """Opens the download directory in file explorer."""
@@ -380,6 +391,9 @@ class TeTubeFrame(wx.Frame):
                 # Let the normal on_search handle it
                 event.Skip()
                 return
+        elif keycode == wx.WXK_F1:
+            self.on_help(None)
+            return
         
         event.Skip()
 
@@ -837,6 +851,128 @@ class LinkDetectedDialog(wx.Dialog):
         parent.set_accessible_name(play_btn, "Play video from clipboard")
         parent.set_accessible_name(download_btn, "Download video from clipboard")
         parent.set_accessible_name(cancel_btn, "Cancel and return to main interface")
+
+class HelpDialog(wx.Dialog):
+    def __init__(self, parent):
+        # Increased size for better readability
+        super().__init__(parent, title="Help & Documentation", size=(800, 600))
+        self.dock_dir = os.path.join(os.getcwd(), "docks")
+        self.init_ui()
+        self.Centre()
+        
+        # Bind global key hook for Escape
+        self.Bind(wx.EVT_CHAR_HOOK, self.on_dialog_char_hook)
+
+    def on_dialog_char_hook(self, event):
+        if event.GetKeyCode() == wx.WXK_ESCAPE:
+            self.EndModal(wx.ID_CANCEL)
+        else:
+            event.Skip()
+
+    def set_accessible_name(self, control, name):
+        """Safely sets the accessible name for a control."""
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
+    def init_ui(self):
+        panel = wx.Panel(self)
+        self.main_vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        # List view container
+        self.list_panel = wx.Panel(panel)
+        list_vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        lbl = wx.StaticText(self.list_panel, label="Select a topic to view (Press Enter or Space to open):")
+        list_vbox.Add(lbl, 0, wx.ALL, 10)
+        
+        self.file_list = wx.ListBox(self.list_panel, style=wx.LB_SINGLE)
+        self.file_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_item_selected)
+        self.file_list.Bind(wx.EVT_KEY_DOWN, self.on_list_key)
+        self.set_accessible_name(self.file_list, "Documentation Topics")
+        
+        list_vbox.Add(self.file_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
+        self.list_panel.SetSizer(list_vbox)
+        
+        # Content view container (initially hidden)
+        self.content_panel = wx.Panel(panel)
+        content_vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        self.content_label = wx.StaticText(self.content_panel, label="Document Content:")
+        # Font for content can be adjusted if needed
+        self.content_text = wx.TextCtrl(self.content_panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        self.set_accessible_name(self.content_text, "Document Content")
+        
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        self.close_file_btn = wx.Button(self.content_panel, label="Close Document")
+        self.close_file_btn.Bind(wx.EVT_BUTTON, self.on_close_document)
+        self.set_accessible_name(self.close_file_btn, "Close document and return to list")
+        hbox.Add(self.close_file_btn, 0, wx.ALL, 10)
+        
+        content_vbox.Add(self.content_label, 0, wx.ALL, 10)
+        content_vbox.Add(self.content_text, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        content_vbox.Add(hbox, 0, wx.ALIGN_RIGHT)
+        self.content_panel.SetSizer(content_vbox)
+        self.content_panel.Hide()
+        
+        # Return button (always visible at bottom)
+        self.return_btn = wx.Button(panel, label="Return to Main Window (Esc)")
+        self.return_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_OK))
+        self.set_accessible_name(self.return_btn, "Return to Main Window")
+        
+        self.main_vbox.Add(self.list_panel, 1, wx.EXPAND | wx.ALL, 0)
+        self.main_vbox.Add(self.content_panel, 0, wx.EXPAND | wx.ALL, 0) # Hidden initially
+        self.main_vbox.Add(self.return_btn, 0, wx.ALIGN_CENTER | wx.ALL, 15)
+        
+        panel.SetSizer(self.main_vbox)
+        self.populate_list()
+
+    def populate_list(self):
+        if not os.path.exists(self.dock_dir):
+            return
+        files = sorted([f for f in os.listdir(self.dock_dir) if f.endswith(".txt")])
+        for f in files:
+            self.file_list.Append(f[:-4]) # Hide .txt
+        if self.file_list.GetCount() > 0:
+            self.file_list.SetSelection(0)
+
+    def on_list_key(self, event):
+        keycode = event.GetKeyCode()
+        # Support both Enter and Space to open document
+        if keycode in [wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER, wx.WXK_SPACE]:
+            self.on_item_selected(None)
+        else:
+            event.Skip()
+
+    def on_item_selected(self, event):
+        selection = self.file_list.GetSelection()
+        if selection != wx.NOT_FOUND:
+            file_name = self.file_list.GetString(selection) + ".txt"
+            file_path = os.path.join(self.dock_dir, file_name)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.content_text.SetValue(content)
+                
+                # Show content, hide list
+                self.list_panel.Hide()
+                self.main_vbox.Detach(self.content_panel)
+                self.main_vbox.Insert(0, self.content_panel, 1, wx.EXPAND | wx.ALL, 5)
+                self.content_panel.Show()
+                
+                self.Layout()
+                self.content_text.SetFocus()
+            except Exception as e:
+                wx.MessageBox(f"Error reading file: {e}", "Error", wx.OK | wx.ICON_ERROR)
+
+    def on_close_document(self, event):
+        self.content_panel.Hide()
+        self.main_vbox.Detach(self.content_panel)
+        self.main_vbox.Insert(0, self.content_panel, 0, wx.EXPAND | wx.ALL, 0) # Hide it back
+        self.list_panel.Show()
+        self.Layout()
+        self.file_list.SetFocus()
 
 def start_gui():
     app = wx.App()
