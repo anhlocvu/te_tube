@@ -9,7 +9,7 @@ from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
 from modules.downloader import DOWNLOAD_DIR, download_media
-version="1.0"
+version="1.3"
 
 FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
@@ -215,6 +215,12 @@ class TeTubeFrame(wx.Frame):
         self.favorite_list.Bind(wx.EVT_CONTEXT_MENU, self.on_favorite_context_menu)
         self.set_accessible_name(self.favorite_list, "Favorite Videos List")
         vbox.Add(self.favorite_list, 1, wx.EXPAND | wx.ALL, 5)
+        
+        clear_fav_btn = wx.Button(self.favorite_tab, label="Clear All Favorites")
+        clear_fav_btn.Bind(wx.EVT_BUTTON, self.on_clear_favorites)
+        self.set_accessible_name(clear_fav_btn, "Clear all favorite videos")
+        vbox.Add(clear_fav_btn, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
+
         self.favorite_tab.SetSizer(vbox)
         self.update_favorite_listbox()
 
@@ -225,8 +231,42 @@ class TeTubeFrame(wx.Frame):
         self.history_list.Bind(wx.EVT_CONTEXT_MENU, self.on_history_context_menu)
         self.set_accessible_name(self.history_list, "Watch History List")
         vbox.Add(self.history_list, 1, wx.EXPAND | wx.ALL, 5)
+        
+        clear_history_btn = wx.Button(self.history_tab, label="Clear All History")
+        clear_history_btn.Bind(wx.EVT_BUTTON, self.on_clear_history)
+        self.set_accessible_name(clear_history_btn, "Clear all watch history")
+        vbox.Add(clear_history_btn, 0, wx.ALL | wx.ALIGN_RIGHT, 5)
+
         self.history_tab.SetSizer(vbox)
         self.update_history_listbox()
+
+    def on_clear_favorites(self, event):
+        """Clears all favorites after user confirmation."""
+        if not self.favorites:
+            wx.MessageBox("Your favorites list is already empty.", "Info", wx.OK | wx.ICON_INFORMATION)
+            return
+
+        dlg = wx.MessageDialog(self, "Are you sure you want to clear all favorite videos?", "Confirm Clear", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
+        if dlg.ShowModal() == wx.ID_YES:
+            self.favorites = []
+            self.save_data(FAVORITES_FILE, self.favorites)
+            self.update_favorite_listbox()
+            wx.MessageBox("All favorites have been cleared.", "Success", wx.OK | wx.ICON_INFORMATION)
+        dlg.Destroy()
+
+    def on_clear_history(self, event):
+        """Clears all history after user confirmation."""
+        if not self.history:
+            wx.MessageBox("Your history is already empty.", "Info", wx.OK | wx.ICON_INFORMATION)
+            return
+
+        dlg = wx.MessageDialog(self, "Are you sure you want to clear all watch history?", "Confirm Clear", wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
+        if dlg.ShowModal() == wx.ID_YES:
+            self.history = []
+            self.save_data(WATCH_HISTORY_FILE, self.history)
+            self.update_history_listbox()
+            wx.MessageBox("Watch history has been cleared.", "Success", wx.OK | wx.ICON_INFORMATION)
+        dlg.Destroy()
 
     def load_data(self, filename):
         if os.path.exists(filename):
