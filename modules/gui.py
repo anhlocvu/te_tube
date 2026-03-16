@@ -13,7 +13,7 @@ from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
 from modules.downloader import get_default_download_dir, download_media
 
-version="1.2"
+version="1.3"
 
 FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
