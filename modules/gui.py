@@ -350,7 +350,7 @@ class TeTubeFrame(wx.Frame):
         except Exception as e:
             wx.MessageBox(f"Error during search: {e}", "Search Error", wx.OK | wx.ICON_ERROR)
         
-        self.SetTitle("Te_Tube - YouTube Search & Download")
+        self.SetTitle("Te_Tube, version: "+version)
         if self.result_list.GetCount() > 0:
             self.result_list.SetSelection(0)
             self.result_list.SetFocus()
