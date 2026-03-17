@@ -2,8 +2,9 @@ import subprocess
 import os
 import re
 
+from modules.settings_manager import get_download_dir
+
 YTDLP_PATH = os.path.join(os.getcwd(), "lib", "yt-dlp.exe")
-DOWNLOAD_DIR = os.path.join(os.getcwd(), "download")
 
 def download_media(url, format_type='mp4', progress_callback=None):
     """
@@ -11,10 +12,11 @@ def download_media(url, format_type='mp4', progress_callback=None):
     progress_callback: function(data) where data is a dict with progress info.
     returns: The path to the downloaded file.
     """
-    if not os.path.exists(DOWNLOAD_DIR):
-        os.makedirs(DOWNLOAD_DIR)
+    download_dir = get_download_dir()
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
         
-    output_template = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    output_template = os.path.join(download_dir, "%(title)s.%(ext)s")
     
     cmd = [YTDLP_PATH, "-o", output_template, "--newline", "--progress"]
     

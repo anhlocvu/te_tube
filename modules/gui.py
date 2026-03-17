@@ -8,7 +8,9 @@ import webbrowser
 from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
-from modules.downloader import DOWNLOAD_DIR, download_media
+import speech_recognition as sr
+from modules.settings_manager import load_settings, save_settings, get_download_dir, get_voice_language, DEFAULT_DOWNLOAD_DIR
+from modules.downloader import download_media
 version="1.3"
 
 FAVORITES_FILE = "favorites.json"
@@ -24,6 +26,7 @@ class TeTubeFrame(wx.Frame):
         self.favorites = self.load_data(FAVORITES_FILE)
         self.history = self.load_data(WATCH_HISTORY_FILE)
         self.last_clipboard_text = ""
+        self.is_listening = False # Flag to prevent multiple voice search triggers
         self.init_ui()
         self.Centre()
         
@@ -99,6 +102,9 @@ class TeTubeFrame(wx.Frame):
         
         main_menu.AppendSeparator()
         
+        settings_item = main_menu.Append(wx.ID_ANY, "&Settings\tF4")
+        self.Bind(wx.EVT_MENU, self.on_settings, settings_item)
+        
         help_item = main_menu.Append(wx.ID_HELP, "&Help\tF1")
         self.Bind(wx.EVT_MENU, self.on_help, help_item)
         
@@ -116,11 +122,18 @@ class TeTubeFrame(wx.Frame):
         dlg.ShowModal()
         dlg.Destroy()
 
+    def on_settings(self, event):
+        """Shows the settings dialog."""
+        dlg = SettingsDialog(self)
+        dlg.ShowModal()
+        dlg.Destroy()
+
     def on_open_download_folder(self, event):
         """Opens the download directory in file explorer."""
-        if not os.path.exists(DOWNLOAD_DIR):
-            os.makedirs(DOWNLOAD_DIR)
-        os.startfile(DOWNLOAD_DIR)
+        path = get_download_dir()
+        if not os.path.exists(path):
+            os.makedirs(path)
+        os.startfile(path)
 
     def on_manual_check_updates(self, event):
         """Manually checks for updates and notifies the user even if they are up-to-date."""
@@ -164,9 +177,14 @@ class TeTubeFrame(wx.Frame):
         search_button.Bind(wx.EVT_BUTTON, self.on_search)
         self.set_accessible_name(search_button, "Search")
 
+        self.voice_button = wx.Button(self.search_tab, label="Voice Search")
+        self.voice_button.Bind(wx.EVT_BUTTON, self.on_voice_search)
+        self.set_accessible_name(self.voice_button, "Search by voice")
+
         hbox1.Add(search_label, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
         hbox1.Add(self.search_input, 1, wx.EXPAND | wx.ALL, 5)
         hbox1.Add(search_button, 0, wx.ALL, 5)
+        hbox1.Add(self.voice_button, 0, wx.ALL, 5)
         vbox.Add(hbox1, 0, wx.EXPAND | wx.ALL, 5)
 
         # Result list
@@ -394,8 +412,67 @@ class TeTubeFrame(wx.Frame):
         elif keycode == wx.WXK_F1:
             self.on_help(None)
             return
+        elif keycode == wx.WXK_F4 and not event.AltDown():
+            self.on_settings(None)
+            return
         
         event.Skip()
+
+    def on_voice_search(self, event):
+        """Performs voice recognition in a background thread."""
+        if self.is_listening: # Avoid re-triggering while listening
+            return
+            
+        self.is_listening = True
+        lang = get_voice_language()
+        
+        # Change button state immediately to inform the user (and NVDA)
+        self.voice_button.SetLabel("Listening...")
+        # Keeping button enabled ensures the focus doesn't jump to the empty list
+        self.set_accessible_name(self.voice_button, "Listening, please speak now")
+        
+        # Ensure UI updates so NVDA can speak the label change
+        wx.GetApp().Yield()
+        
+        # Run recognition in a separate thread to keep UI responsive
+        threading.Thread(target=self._do_voice_recognition, args=(lang,), daemon=True).start()
+
+    def _do_voice_recognition(self, lang):
+        """Worker function for voice recognition."""
+        r = sr.Recognizer()
+        query = None
+        error_msg = None
+        
+        try:
+            with sr.Microphone() as source:
+                r.adjust_for_ambient_noise(source, duration=0.5)
+                # Listen with timeout
+                audio = r.listen(source, timeout=5, phrase_time_limit=10)
+            
+            # Recognize using Google
+            query = r.recognize_google(audio, language=lang)
+        except sr.WaitTimeoutError:
+            error_msg = "No speech detected. Please try again."
+        except sr.UnknownValueError:
+            error_msg = "Could not understand audio."
+        except Exception as e:
+            error_msg = f"Voice search error: {e}"
+            
+        # Update UI back on the main thread
+        wx.CallAfter(self._on_voice_recognition_complete, query, error_msg)
+
+    def _on_voice_recognition_complete(self, query, error_msg):
+        """Handles the result of voice recognition on the main thread."""
+        # Reset state
+        self.is_listening = False
+        self.voice_button.SetLabel("Voice Search")
+        self.set_accessible_name(self.voice_button, "Search by voice")
+        
+        if query:
+            self.search_input.SetValue(query)
+            self.on_search(None)
+        elif error_msg:
+            wx.MessageBox(error_msg, "Voice Search", wx.OK | wx.ICON_WARNING)
 
     def on_check_clipboard(self, event):
         if not wx.TheClipboard.Open():
@@ -854,8 +931,8 @@ class LinkDetectedDialog(wx.Dialog):
 
 class HelpDialog(wx.Dialog):
     def __init__(self, parent):
-        # Increased size for better readability
-        super().__init__(parent, title="Help & Documentation", size=(800, 600))
+        # Increased width significantly to ensure long lines are possible
+        super().__init__(parent, title="Help & Documentation", size=(1000, 700))
         self.dock_dir = os.path.join(os.getcwd(), "docks")
         self.init_ui()
         self.Centre()
@@ -900,8 +977,8 @@ class HelpDialog(wx.Dialog):
         content_vbox = wx.BoxSizer(wx.VERTICAL)
         
         self.content_label = wx.StaticText(self.content_panel, label="Document Content:")
-        # Font for content can be adjusted if needed
-        self.content_text = wx.TextCtrl(self.content_panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2)
+        # Use full width for TextCtrl, rich text for better handling of large files
+        self.content_text = wx.TextCtrl(self.content_panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | wx.TE_NOHIDESEL)
         self.set_accessible_name(self.content_text, "Document Content")
         
         hbox = wx.BoxSizer(wx.HORIZONTAL)
@@ -911,7 +988,8 @@ class HelpDialog(wx.Dialog):
         hbox.Add(self.close_file_btn, 0, wx.ALL, 10)
         
         content_vbox.Add(self.content_label, 0, wx.ALL, 10)
-        content_vbox.Add(self.content_text, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        # 0 padding on left/right for the text control to use every pixel
+        content_vbox.Add(self.content_text, 1, wx.EXPAND | wx.ALL, 2)
         content_vbox.Add(hbox, 0, wx.ALIGN_RIGHT)
         self.content_panel.SetSizer(content_vbox)
         self.content_panel.Hide()
@@ -922,7 +1000,7 @@ class HelpDialog(wx.Dialog):
         self.set_accessible_name(self.return_btn, "Return to Main Window")
         
         self.main_vbox.Add(self.list_panel, 1, wx.EXPAND | wx.ALL, 0)
-        self.main_vbox.Add(self.content_panel, 0, wx.EXPAND | wx.ALL, 0) # Hidden initially
+        self.main_vbox.Add(self.content_panel, 0, wx.EXPAND | wx.ALL, 0)
         self.main_vbox.Add(self.return_btn, 0, wx.ALIGN_CENTER | wx.ALL, 15)
         
         panel.SetSizer(self.main_vbox)
@@ -958,11 +1036,13 @@ class HelpDialog(wx.Dialog):
                 # Show content, hide list
                 self.list_panel.Hide()
                 self.main_vbox.Detach(self.content_panel)
-                self.main_vbox.Insert(0, self.content_panel, 1, wx.EXPAND | wx.ALL, 5)
+                # Ensure the panel expands fully in the main sizer
+                self.main_vbox.Insert(0, self.content_panel, 1, wx.EXPAND | wx.ALL, 0)
                 self.content_panel.Show()
                 
                 self.Layout()
                 self.content_text.SetFocus()
+                self.content_text.SetInsertionPoint(0) # Go to start of doc
             except Exception as e:
                 wx.MessageBox(f"Error reading file: {e}", "Error", wx.OK | wx.ICON_ERROR)
 
@@ -973,6 +1053,134 @@ class HelpDialog(wx.Dialog):
         self.list_panel.Show()
         self.Layout()
         self.file_list.SetFocus()
+
+class SettingsDialog(wx.Dialog):
+    def __init__(self, parent):
+        super().__init__(parent, title="Settings", size=(500, 400))
+        self.config = load_settings()
+        self.init_ui()
+        self.Centre()
+
+    def set_accessible_name(self, control, name):
+        """Safely sets the accessible name for a control."""
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
+    def init_ui(self):
+        panel = wx.Panel(self)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        self.notebook = wx.Notebook(panel)
+        self.general_tab = wx.Panel(self.notebook)
+        self.voice_tab = wx.Panel(self.notebook)
+        
+        self.notebook.AddPage(self.general_tab, "General")
+        self.notebook.AddPage(self.voice_tab, "Voice Search")
+        
+        self.setup_general_tab()
+        self.setup_voice_tab()
+        
+        vbox.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
+        
+        # Bottom buttons
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        ok_btn = wx.Button(panel, id=wx.ID_OK, label="OK")
+        ok_btn.SetDefault() # Press Enter to trigger
+        self.Bind(wx.EVT_BUTTON, self.on_save, id=wx.ID_OK)
+        self.set_accessible_name(ok_btn, "Save settings and close")
+        
+        cancel_btn = wx.Button(panel, id=wx.ID_CANCEL, label="Cancel")
+        # wx.ID_CANCEL automatically handles Escape key
+        self.set_accessible_name(cancel_btn, "Cancel changes and close")
+        
+        hbox.Add(ok_btn, 0, wx.ALL, 5)
+        hbox.Add(cancel_btn, 0, wx.ALL, 5)
+        vbox.Add(hbox, 0, wx.ALIGN_RIGHT | wx.RIGHT | wx.BOTTOM, 10)
+        
+        panel.SetSizer(vbox)
+
+    def setup_general_tab(self):
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        lbl = wx.StaticText(self.general_tab, label="Download Directory:")
+        self.dir_input = wx.TextCtrl(self.general_tab, value=self.config.get('General', 'download_dir'))
+        self.set_accessible_name(self.dir_input, "Download directory path")
+        
+        browse_btn = wx.Button(self.general_tab, label="Browse...")
+        browse_btn.Bind(wx.EVT_BUTTON, self.on_browse)
+        self.set_accessible_name(browse_btn, "Browse for download folder")
+        
+        hbox = wx.BoxSizer(wx.HORIZONTAL)
+        hbox.Add(self.dir_input, 1, wx.EXPAND | wx.RIGHT, 5)
+        hbox.Add(browse_btn, 0)
+        
+        vbox.Add(lbl, 0, wx.ALL, 10)
+        vbox.Add(hbox, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        
+        reset_btn = wx.Button(self.general_tab, label="Reset to Default")
+        reset_btn.Bind(wx.EVT_BUTTON, self.on_reset_dir)
+        self.set_accessible_name(reset_btn, "Reset download directory to default")
+        vbox.Add(reset_btn, 0, wx.ALL, 10)
+        
+        self.general_tab.SetSizer(vbox)
+
+    def setup_voice_tab(self):
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        lbl = wx.StaticText(self.voice_tab, label="Voice Recognition Language:")
+        
+        # Common languages for the combo box
+        self.languages = [
+            ("Vietnamese", "vi-VN"),
+            ("English (US)", "en-US"),
+            ("English (UK)", "en-GB"),
+            ("Japanese", "ja-JP"),
+            ("Korean", "ko-KR"),
+            ("Chinese", "zh-CN"),
+            ("French", "fr-FR")
+        ]
+        
+        lang_labels = [l[0] for l in self.languages]
+        current_code = self.config.get('VoiceSearch', 'language')
+        
+        # Find index of current language code
+        current_index = 0
+        for i, (name, code) in enumerate(self.languages):
+            if code == current_code:
+                current_index = i
+                break
+                
+        self.lang_combo = wx.ComboBox(self.voice_tab, choices=lang_labels, style=wx.CB_READONLY)
+        self.lang_combo.SetSelection(current_index)
+        self.set_accessible_name(self.lang_combo, "Select voice recognition language")
+        
+        vbox.Add(lbl, 0, wx.ALL, 10)
+        vbox.Add(self.lang_combo, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        
+        self.voice_tab.SetSizer(vbox)
+
+    def on_browse(self, event):
+        default_path = self.dir_input.GetValue()
+        dlg = wx.DirDialog(self, "Choose Download Directory", defaultPath=default_path, style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.dir_input.SetValue(dlg.GetPath())
+        dlg.Destroy()
+
+    def on_reset_dir(self, event):
+        self.dir_input.SetValue(DEFAULT_DOWNLOAD_DIR)
+
+    def on_save(self, event):
+        # Update config object
+        self.config['General']['download_dir'] = self.dir_input.GetValue()
+        
+        lang_index = self.lang_combo.GetSelection()
+        if lang_index != wx.NOT_FOUND:
+            self.config['VoiceSearch']['language'] = self.languages[lang_index][1]
+            
+        save_settings(self.config)
+        self.EndModal(wx.ID_OK)
 
 def start_gui():
     app = wx.App()
