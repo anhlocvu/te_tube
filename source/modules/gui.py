@@ -17,6 +17,8 @@ FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
 # Define a custom event for progress updates using the modern way
 DownloadEvent, EVT_DOWNLOAD_UPDATE = wx.lib.newevent.NewEvent()
+SearchEvent, EVT_SEARCH_COMPLETE = wx.lib.newevent.NewEvent()
+PlayEvent, EVT_PLAY_READY = wx.lib.newevent.NewEvent()
 
 class TeTubeFrame(wx.Frame):
     def __init__(self):
@@ -32,6 +34,9 @@ class TeTubeFrame(wx.Frame):
         
         # Use CHAR_HOOK for global hotkeys like Enter
         self.Bind(wx.EVT_CHAR_HOOK, self.on_key_down)
+        
+        # Search complete event
+        self.Bind(EVT_SEARCH_COMPLETE, self.on_search_complete)
 
         # Clipboard monitor timer
         self.clipboard_timer = wx.Timer(self)
@@ -336,24 +341,32 @@ class TeTubeFrame(wx.Frame):
         if not query:
             return
 
-        # Show status
-        self.SetTitle(f"Searching for '{query}'...")
+        # Create and show the modal searching dialog
+        dialog = SearchProgressDialog(self, query)
+        dialog.ShowModal()
+        dialog.Destroy()
         
-        # Clear previous results
-        self.result_list.Clear()
-        try:
-            self.results = search_youtube(query)
-            
-            for item in self.results:
-                display_text = f"{item['title']} [{item['duration']}] - {item['uploader']}"
-                self.result_list.Append(display_text)
-        except Exception as e:
-            wx.MessageBox(f"Error during search: {e}", "Search Error", wx.OK | wx.ICON_ERROR)
-        
-        self.SetTitle("Te_Tube, version: "+version)
+        # Focus back to result list after search
         if self.result_list.GetCount() > 0:
             self.result_list.SetSelection(0)
             self.result_list.SetFocus()
+
+    def on_search_complete(self, event):
+        """Handles the completion of a search on the main thread."""
+        results = event.results
+        error = event.error
+        
+        # Clear previous results
+        self.result_list.Clear()
+        
+        if error:
+            wx.MessageBox(f"Error during search: {error}", "Search Error", wx.OK | wx.ICON_ERROR)
+            return
+            
+        self.results = results
+        for item in self.results:
+            display_text = f"{item['title']} [{item['duration']}] - {item['uploader']}"
+            self.result_list.Append(display_text)
 
     def on_play(self, event):
         selection = self.result_list.GetSelection()
@@ -387,10 +400,11 @@ class TeTubeFrame(wx.Frame):
         self.add_to_history({'title': 'Video from link', 'url': url, 'uploader': 'Unknown'})
 
     def play_url(self, url, audio_only=False):
-        try:
-            play_video(url, audio_only=audio_only)
-        except Exception as e:
-            wx.MessageBox(f"Error playing video: {e}", "Playback Error", wx.OK | wx.ICON_ERROR)
+        # Create and show the modal preparing dialog
+        dialog = PlayProgressDialog(self, url, audio_only)
+        wx.SafeYield() # Ensure the dialog is drawn and NVDA catches it
+        dialog.ShowModal()
+        dialog.Destroy()
 
     def on_key_down(self, event):
         keycode = event.GetKeyCode()
@@ -1180,6 +1194,120 @@ class SettingsDialog(wx.Dialog):
             self.config['VoiceSearch']['language'] = self.languages[lang_index][1]
             
         save_settings(self.config)
+        self.EndModal(wx.ID_OK)
+
+class SearchThread(threading.Thread):
+    def __init__(self, parent, query):
+        super().__init__()
+        self.parent = parent
+        self.query = query
+        self.daemon = True
+
+    def run(self):
+        try:
+            results = search_youtube(self.query)
+            wx.PostEvent(self.parent, SearchEvent(results=results, error=None))
+        except Exception as e:
+            wx.PostEvent(self.parent, SearchEvent(results=[], error=str(e)))
+
+class SearchProgressDialog(wx.Dialog):
+    def __init__(self, parent, query):
+        super().__init__(parent, title="Searching", size=(350, 150), style=wx.CAPTION)
+        self.parent = parent
+        self.query = query
+        
+        panel = wx.Panel(self)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        self.status_label = wx.StaticText(panel, label=f"Searching for: {query}")
+        self.set_accessible_name(self.status_label, f"Searching for {query}, please wait...")
+        
+        # Pulsing gauge to show activity
+        self.gauge = wx.Gauge(panel, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
+        self.set_accessible_name(self.gauge, "Search in progress")
+        
+        vbox.Add(self.status_label, 0, wx.ALL | wx.EXPAND, 15)
+        vbox.Add(self.gauge, 0, wx.ALL | wx.EXPAND, 15)
+        
+        panel.SetSizer(vbox)
+        self.Centre()
+        
+        # Timer to pulse the gauge
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
+        self.timer.Start(50)
+        
+        # Start the search thread
+        self.thread = SearchThread(self.parent, self.query)
+        self.thread.start()
+        
+        # Bind the search complete event to this dialog so it can close itself
+        self.parent.Bind(EVT_SEARCH_COMPLETE, self.on_search_finished)
+
+    def set_accessible_name(self, control, name):
+        """Safely sets the accessible name for a control."""
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
+    def on_timer(self, event):
+        self.gauge.Pulse()
+
+    def on_search_finished(self, event):
+        self.timer.Stop()
+        # Unbind from parent to avoid multiple triggers if not cleaned up
+        self.parent.Unbind(EVT_SEARCH_COMPLETE)
+        # Re-post the event to parent so parent's handler can also run
+        wx.PostEvent(self.parent, event)
+        self.EndModal(wx.ID_OK)
+
+class PlayProgressDialog(wx.Dialog):
+    def __init__(self, parent, url, audio_only):
+        super().__init__(parent, title="Playing", size=(350, 150), style=wx.CAPTION)
+        self.parent = parent
+        
+        panel = wx.Panel(self)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        self.status_label = wx.StaticText(panel, label="Preparing playback...")
+        self.set_accessible_name(self.status_label, "Preparing playback, please wait...")
+        
+        self.gauge = wx.Gauge(panel, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
+        self.set_accessible_name(self.gauge, "Preparation in progress")
+        
+        vbox.Add(self.status_label, 0, wx.ALL | wx.EXPAND, 15)
+        vbox.Add(self.gauge, 0, wx.ALL | wx.EXPAND, 15)
+        
+        panel.SetSizer(vbox)
+        self.Centre()
+        
+        self.timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self.on_timer, self.timer)
+        self.timer.Start(50)
+        
+        # Start playback in background via the player module
+        def on_start(error=None):
+            wx.PostEvent(self, PlayEvent(error=error))
+            
+        play_video(url, audio_only=audio_only, on_start_callback=on_start)
+        
+        self.Bind(EVT_PLAY_READY, self.on_ready)
+
+    def set_accessible_name(self, control, name):
+        """Safely sets the accessible name for a control."""
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
+    def on_timer(self, event):
+        self.gauge.Pulse()
+
+    def on_ready(self, event):
+        self.timer.Stop()
+        if event.error:
+            wx.MessageBox(f"Error starting playback: {event.error}", "Playback Error", wx.OK | wx.ICON_ERROR)
         self.EndModal(wx.ID_OK)
 
 def start_gui():
