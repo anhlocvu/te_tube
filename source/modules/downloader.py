@@ -6,10 +6,12 @@ from modules.settings_manager import get_download_dir
 
 YTDLP_PATH = os.path.join(os.getcwd(), "lib", "yt-dlp.exe")
 
-def download_media(url, format_type='mp4', progress_callback=None):
+def download_media(url, format_type='mp4', progress_callback=None, start_time=None, end_time=None):
     """
     Downloads media from URL in specified format.
     progress_callback: function(data) where data is a dict with progress info.
+    start_time: string representing start time (e.g., '00:01:00')
+    end_time: string representing end time
     returns: The path to the downloaded file.
     """
     download_dir = get_download_dir()
@@ -28,6 +30,14 @@ def download_media(url, format_type='mp4', progress_callback=None):
         cmd += ["-f", "bestaudio", "--extract-audio", "--audio-format", "wav"]
     elif format_type == 'mp4':
         cmd += ["-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"]
+    
+    if start_time or end_time:
+        # Add time range arguments
+        s_time = start_time if start_time else "0"
+        e_time = end_time if end_time else "inf"
+        cmd += ["--download-sections", f"*{s_time}-{e_time}"]
+        # Force re-download to avoid yt-dlp skipping if file exists but we want a section
+        cmd += ["--force-overwrites"]
     
     # Add ffmpeg path from lib folder
     cmd += ["--ffmpeg-location", os.path.join(os.getcwd(), "lib")]

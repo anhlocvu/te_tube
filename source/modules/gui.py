@@ -530,16 +530,9 @@ class TeTubeFrame(wx.Frame):
         dialog.Destroy()
 
     def on_download_link_from_url(self, url):
-        # Create a simple menu for format selection
-        menu = wx.Menu()
-        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
-        
-        for label, fmt in formats:
-            item = menu.Append(wx.ID_ANY, label)
-            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.start_download(url, "Video from clipboard", f), item)
-        
-        self.PopupMenu(menu)
-        menu.Destroy()
+        dlg = DownloadOptionsDialog(self, "Video from clipboard", url)
+        dlg.ShowModal()
+        dlg.Destroy()
 
     def on_copy_link(self, event):
         # Determine which list is active
@@ -700,14 +693,8 @@ class TeTubeFrame(wx.Frame):
         favorite_item = menu.Append(wx.ID_ANY, "&Add Favorite")
         self.Bind(wx.EVT_MENU, self.on_add_favorite, favorite_item)
 
-        download_menu = wx.Menu()
-        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
-        
-        for label, fmt in formats:
-            item = download_menu.Append(wx.ID_ANY, label)
-            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download(f), item)
-            
-        menu.AppendSubMenu(download_menu, "&Download")
+        download_item = menu.Append(wx.ID_ANY, "&Download")
+        self.Bind(wx.EVT_MENU, self.on_download, download_item)
         
         self.PopupMenu(menu)
         menu.Destroy()
@@ -736,12 +723,8 @@ class TeTubeFrame(wx.Frame):
         remove_item = menu.Append(wx.ID_ANY, "&Remove from favorite")
         self.Bind(wx.EVT_MENU, self.on_remove_favorite, remove_item)
 
-        download_menu = wx.Menu()
-        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
-        for label, fmt in formats:
-            item = download_menu.Append(wx.ID_ANY, label)
-            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download_favorite(f), item)
-        menu.AppendSubMenu(download_menu, "&Download")
+        download_item = menu.Append(wx.ID_ANY, "&Download")
+        self.Bind(wx.EVT_MENU, self.on_download_favorite, download_item)
 
         self.PopupMenu(menu)
         menu.Destroy()
@@ -770,37 +753,39 @@ class TeTubeFrame(wx.Frame):
         remove_item = menu.Append(wx.ID_ANY, "&Remove from history")
         self.Bind(wx.EVT_MENU, self.on_remove_history, remove_item)
 
-        download_menu = wx.Menu()
-        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
-        for label, fmt in formats:
-            item = download_menu.Append(wx.ID_ANY, label)
-            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.on_download_history(f), item)
-        menu.AppendSubMenu(download_menu, "&Download")
+        download_item = menu.Append(wx.ID_ANY, "&Download")
+        self.Bind(wx.EVT_MENU, self.on_download_history, download_item)
 
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def on_download_favorite(self, fmt):
+    def on_download_favorite(self, event):
         selection = self.favorite_list.GetSelection()
         if selection != wx.NOT_FOUND:
             video_url = self.favorites[selection]['url']
             title = self.favorites[selection]['title']
-            self.start_download(video_url, title, fmt)
+            dlg = DownloadOptionsDialog(self, title, video_url)
+            dlg.ShowModal()
+            dlg.Destroy()
 
-    def on_download_history(self, fmt):
+    def on_download_history(self, event):
         selection = self.history_list.GetSelection()
         if selection != wx.NOT_FOUND:
             actual_index = len(self.history) - 1 - selection
             video_url = self.history[actual_index]['url']
             title = self.history[actual_index]['title']
-            self.start_download(video_url, title, fmt)
+            dlg = DownloadOptionsDialog(self, title, video_url)
+            dlg.ShowModal()
+            dlg.Destroy()
 
-    def on_download(self, fmt):
+    def on_download(self, event):
         selection = self.result_list.GetSelection()
         if selection != wx.NOT_FOUND:
             video_url = self.results[selection]['url']
             title = self.results[selection]['title']
-            self.start_download(video_url, title, fmt)
+            dlg = DownloadOptionsDialog(self, title, video_url)
+            dlg.ShowModal()
+            dlg.Destroy()
 
     def on_download_link(self, event):
         url = self.link_input.GetValue().strip()
@@ -808,27 +793,22 @@ class TeTubeFrame(wx.Frame):
             wx.MessageBox("Please enter a video link first.", "Error", wx.OK | wx.ICON_WARNING)
             return
         
-        # Create a simple menu for format selection
-        menu = wx.Menu()
-        formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
-        
-        for label, fmt in formats:
-            item = menu.Append(wx.ID_ANY, label)
-            self.Bind(wx.EVT_MENU, lambda evt, f=fmt: self.start_download(url, "Video from link", f), item)
-        
-        self.PopupMenu(menu)
-        menu.Destroy()
+        dlg = DownloadOptionsDialog(self, "Video from link", url)
+        dlg.ShowModal()
+        dlg.Destroy()
 
-    def start_download(self, url, title, fmt):
-        dialog = DownloadProgressDialog(self, title, url, fmt)
+    def start_download(self, url, title, fmt, start_time=None, end_time=None):
+        dialog = DownloadProgressDialog(self, title, url, fmt, start_time, end_time)
         dialog.Show()
 
 class DownloadThread(threading.Thread):
-    def __init__(self, win, url, fmt):
+    def __init__(self, win, url, fmt, start_time=None, end_time=None):
         super().__init__()
         self.win = win
         self.url = url
         self.fmt = fmt
+        self.start_time = start_time
+        self.end_time = end_time
         self.daemon = True
 
     def run(self):
@@ -836,13 +816,13 @@ class DownloadThread(threading.Thread):
             def callback(p):
                 wx.PostEvent(self.win, DownloadEvent(**p))
             
-            final_path = download_media(self.url, self.fmt, callback)
+            final_path = download_media(self.url, self.fmt, callback, self.start_time, self.end_time)
             wx.PostEvent(self.win, DownloadEvent(status='finished', path=final_path))
         except Exception as e:
             wx.PostEvent(self.win, DownloadEvent(status='error', error=str(e)))
 
 class DownloadProgressDialog(wx.Dialog):
-    def __init__(self, parent, title, url, fmt):
+    def __init__(self, parent, title, url, fmt, start_time=None, end_time=None):
         super().__init__(parent, title="Downloading...", size=(400, 180))
         self.video_title = title
         self.last_percent = -1
@@ -868,7 +848,7 @@ class DownloadProgressDialog(wx.Dialog):
         
         self.Bind(EVT_DOWNLOAD_UPDATE, self.on_update)
         
-        self.thread = DownloadThread(self, url, fmt)
+        self.thread = DownloadThread(self, url, fmt, start_time, end_time)
         self.thread.start()
 
     def set_accessible_name(self, control, name):
@@ -1308,6 +1288,109 @@ class PlayProgressDialog(wx.Dialog):
         self.timer.Stop()
         if event.error:
             wx.MessageBox(f"Error starting playback: {event.error}", "Playback Error", wx.OK | wx.ICON_ERROR)
+        self.EndModal(wx.ID_OK)
+
+class DownloadOptionsDialog(wx.Dialog):
+    def __init__(self, parent, title, url):
+        super().__init__(parent, title="Download Options", size=(400, 300))
+        self.parent = parent
+        self.video_title = title
+        self.url = url
+        self.init_ui()
+        self.Centre()
+
+    def set_accessible_name(self, control, name):
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
+    def init_ui(self):
+        panel = wx.Panel(self)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        lbl = wx.StaticText(panel, label=f"Download: {self.video_title}")
+        lbl.Wrap(380)
+        vbox.Add(lbl, 0, wx.ALL | wx.EXPAND, 10)
+        
+        # Format Selection
+        format_lbl = wx.StaticText(panel, label="Select Format:")
+        vbox.Add(format_lbl, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        
+        self.formats = [("MP4 Video", "mp4"), ("M4A Audio", "m4a"), ("MP3 Audio", "mp3"), ("WAV Audio", "wav")]
+        format_labels = [f[0] for f in self.formats]
+        self.format_combo = wx.ComboBox(panel, choices=format_labels, style=wx.CB_READONLY)
+        self.format_combo.SetSelection(0)
+        self.set_accessible_name(self.format_combo, "Select download format")
+        vbox.Add(self.format_combo, 0, wx.ALL | wx.EXPAND, 10)
+        
+        # Time Range
+        self.time_checkbox = wx.CheckBox(panel, label="Download specific time range")
+        self.time_checkbox.Bind(wx.EVT_CHECKBOX, self.on_checkbox)
+        self.set_accessible_name(self.time_checkbox, "Download specific time range")
+        vbox.Add(self.time_checkbox, 0, wx.LEFT | wx.RIGHT | wx.TOP, 10)
+        
+        time_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        
+        start_lbl = wx.StaticText(panel, label="Start (HH:MM:SS):")
+        self.start_input = wx.TextCtrl(panel)
+        self.start_input.Disable()
+        self.set_accessible_name(self.start_input, "Start time in hours, minutes, seconds")
+        
+        end_lbl = wx.StaticText(panel, label="End (HH:MM:SS):")
+        self.end_input = wx.TextCtrl(panel)
+        self.end_input.Disable()
+        self.set_accessible_name(self.end_input, "End time in hours, minutes, seconds")
+        
+        time_vbox1 = wx.BoxSizer(wx.VERTICAL)
+        time_vbox1.Add(start_lbl, 0, wx.BOTTOM, 5)
+        time_vbox1.Add(self.start_input, 0, wx.EXPAND)
+        
+        time_vbox2 = wx.BoxSizer(wx.VERTICAL)
+        time_vbox2.Add(end_lbl, 0, wx.BOTTOM, 5)
+        time_vbox2.Add(self.end_input, 0, wx.EXPAND)
+        
+        time_hbox.Add(time_vbox1, 1, wx.RIGHT, 10)
+        time_hbox.Add(time_vbox2, 1, wx.LEFT, 10)
+        vbox.Add(time_hbox, 0, wx.ALL | wx.EXPAND, 10)
+        
+        # Buttons
+        btn_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        download_btn = wx.Button(panel, id=wx.ID_OK, label="Download")
+        download_btn.SetDefault()
+        self.Bind(wx.EVT_BUTTON, self.on_download, id=wx.ID_OK)
+        self.set_accessible_name(download_btn, "Start download")
+        
+        cancel_btn = wx.Button(panel, id=wx.ID_CANCEL, label="Cancel")
+        self.set_accessible_name(cancel_btn, "Cancel download")
+        
+        btn_hbox.Add(download_btn, 0, wx.RIGHT, 10)
+        btn_hbox.Add(cancel_btn, 0)
+        vbox.Add(btn_hbox, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        
+        panel.SetSizer(vbox)
+
+    def on_checkbox(self, event):
+        is_checked = self.time_checkbox.GetValue()
+        self.start_input.Enable(is_checked)
+        self.end_input.Enable(is_checked)
+
+    def on_download(self, event):
+        fmt = self.formats[self.format_combo.GetSelection()][1]
+        start_time = None
+        end_time = None
+        
+        if self.time_checkbox.GetValue():
+            start_time = self.start_input.GetValue().strip()
+            end_time = self.end_input.GetValue().strip()
+            
+            # Simple validation to ensure format looks roughly like a time or at least isn't just spaces
+            # Let yt-dlp handle strict parsing, but we shouldn't send empty strings if checked
+            if not start_time and not end_time:
+                wx.MessageBox("Please enter at least a start or end time.", "Error", wx.OK | wx.ICON_WARNING)
+                return
+                
+        self.parent.start_download(self.url, self.video_title, fmt, start_time, end_time)
         self.EndModal(wx.ID_OK)
 
 def start_gui():

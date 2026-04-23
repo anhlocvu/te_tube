@@ -8,7 +8,9 @@ The project aims to break down digital barriers for the blind and visually impai
 KEY CAPABILITIES
 - Ad-Free Playback: Watch videos without interruptions.
 - Accessibility Optimized: Custom-built GUI elements with accessible names and keyboard-centric navigation.
+- Voice Search: Speak your queries naturally to find videos instantly.
 - Multi-Format Downloads: Save content as high-quality video (MP4) or audio (MP3, M4A, WAV).
+- Time-Range Downloads: Precisely cut and download specific sections of a video to save time and bandwidth.
 - Smart Link Detection: Automatically detects YouTube links copied to the clipboard for instant action.
 - Personalized Lists: Maintain your own Favorites and Watch History.
 - Self-Updating: Automatically keeps itself and its core components (like yt-dlp) up to date.
