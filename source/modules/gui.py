@@ -372,14 +372,14 @@ class TeTubeFrame(wx.Frame):
         selection = self.result_list.GetSelection()
         if selection != wx.NOT_FOUND:
             video_data = self.results[selection]
-            self.play_url(video_data['url'])
+            self.play_url(video_data['url'], title=video_data['title'])
             self.add_to_history(video_data)
 
     def on_play_audio(self, event):
         selection = self.result_list.GetSelection()
         if selection != wx.NOT_FOUND:
             video_data = self.results[selection]
-            self.play_url(video_data['url'], audio_only=True)
+            self.play_url(video_data['url'], title=video_data['title'], audio_only=True)
             self.add_to_history(video_data)
 
     def on_play_link(self, event):
@@ -388,7 +388,7 @@ class TeTubeFrame(wx.Frame):
             wx.MessageBox("Please enter a video link first.", "Error", wx.OK | wx.ICON_WARNING)
             return
         # We don't have full info, but we can try to get it or just play
-        self.play_url(url)
+        self.play_url(url, title="Video from link")
         self.add_to_history({'title': 'Video from link', 'url': url, 'uploader': 'Unknown'})
 
     def on_play_link_audio(self, event):
@@ -396,13 +396,12 @@ class TeTubeFrame(wx.Frame):
         if not url:
             wx.MessageBox("Please enter a video link first.", "Error", wx.OK | wx.ICON_WARNING)
             return
-        self.play_url(url, audio_only=True)
+        self.play_url(url, title="Video from link", audio_only=True)
         self.add_to_history({'title': 'Video from link', 'url': url, 'uploader': 'Unknown'})
 
-    def play_url(self, url, audio_only=False):
+    def play_url(self, url, title="Unknown Video", audio_only=False):
         # Create and show the modal preparing dialog
-        dialog = PlayProgressDialog(self, url, audio_only)
-        wx.SafeYield() # Ensure the dialog is drawn and NVDA catches it
+        dialog = PlayProgressDialog(self, url, title, audio_only)
         dialog.ShowModal()
         dialog.Destroy()
 
@@ -527,7 +526,7 @@ class TeTubeFrame(wx.Frame):
         result = dialog.ShowModal()
         
         if result == wx.ID_YES: # Play
-            self.play_url(url)
+            self.play_url(url, title="Video from clipboard")
         elif result == wx.ID_SAVE: # Download (using ID_SAVE as a placeholder for Download)
             self.on_download_link_from_url(url)
         
@@ -645,14 +644,14 @@ class TeTubeFrame(wx.Frame):
         selection = self.favorite_list.GetSelection()
         if selection != wx.NOT_FOUND:
             video_data = self.favorites[selection]
-            self.play_url(video_data['url'])
+            self.play_url(video_data['url'], title=video_data['title'])
             self.add_to_history(video_data)
 
     def on_play_favorite_audio(self, event):
         selection = self.favorite_list.GetSelection()
         if selection != wx.NOT_FOUND:
             video_data = self.favorites[selection]
-            self.play_url(video_data['url'], audio_only=True)
+            self.play_url(video_data['url'], title=video_data['title'], audio_only=True)
             self.add_to_history(video_data)
 
     def on_play_history(self, event):
@@ -661,7 +660,7 @@ class TeTubeFrame(wx.Frame):
             # History is displayed reversed
             actual_index = len(self.history) - 1 - selection
             video_data = self.history[actual_index]
-            self.play_url(video_data['url'])
+            self.play_url(video_data['url'], title=video_data['title'])
             # Re-adding to history will move it to top
             self.add_to_history(video_data)
 
@@ -670,7 +669,7 @@ class TeTubeFrame(wx.Frame):
         if selection != wx.NOT_FOUND:
             actual_index = len(self.history) - 1 - selection
             video_data = self.history[actual_index]
-            self.play_url(video_data['url'], audio_only=True)
+            self.play_url(video_data['url'], title=video_data['title'], audio_only=True)
             self.add_to_history(video_data)
 
     def on_context_menu(self, event):
@@ -1242,15 +1241,15 @@ class SearchProgressDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 class PlayProgressDialog(wx.Dialog):
-    def __init__(self, parent, url, audio_only):
+    def __init__(self, parent, url, title, audio_only):
         super().__init__(parent, title="Playing", size=(350, 150), style=wx.CAPTION)
         self.parent = parent
         
         panel = wx.Panel(self)
         vbox = wx.BoxSizer(wx.VERTICAL)
         
-        self.status_label = wx.StaticText(panel, label="Preparing playback...")
-        self.set_accessible_name(self.status_label, "Preparing playback, please wait...")
+        self.status_label = wx.StaticText(panel, label=f"Preparing playback for: {title}...")
+        self.set_accessible_name(self.status_label, f"Preparing playback for {title}, please wait...")
         
         self.gauge = wx.Gauge(panel, range=100, style=wx.GA_HORIZONTAL | wx.GA_SMOOTH)
         self.set_accessible_name(self.gauge, "Preparation in progress")
@@ -1269,7 +1268,7 @@ class PlayProgressDialog(wx.Dialog):
         def on_start(error=None):
             wx.PostEvent(self, PlayEvent(error=error))
             
-        play_video(url, audio_only=audio_only, on_start_callback=on_start)
+        play_video(url, title=title, audio_only=audio_only, on_start_callback=on_start)
         
         self.Bind(EVT_PLAY_READY, self.on_ready)
 

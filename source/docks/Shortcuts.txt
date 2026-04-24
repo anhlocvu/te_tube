@@ -20,13 +20,10 @@ DIALOGS (Settings, Download Options, Help)
 - Escape (Esc): Cancel and close the dialog without saving changes.
 - Space (in Help Dialog): Open the selected documentation file.
 
-MPV PLAYER CONTROLS (During Playback)
-When the player window is active, use these standard MPV shortcuts:
+VLC PLAYER CONTROLS (During Playback)
+When the player window is active, use these shortcuts:
 - Space: Toggle Pause and Play.
-- f: Toggle Fullscreen mode.
-- q: Stop playback and close the player window.
-- Left and Right Arrows: Seek backward or forward 5 seconds.
-- Up and Down Arrows: Seek backward or forward 1 minute.
-- 9 and 0: Decrease or Increase volume.
-- m: Mute or Unmute audio.
-- [ and ]: Decrease or Increase playback speed.
+- Left and Right Arrows: Seek backward or forward 10 seconds.
+- Up and Down Arrows: Decrease or Increase volume.
+- t: Speak current video time.
+- Escape (Esc): Stop playback and close the player window.
