@@ -12,7 +12,8 @@ def get_default_settings():
         'download_dir': DEFAULT_DOWNLOAD_DIR
     }
     config['VoiceSearch'] = {
-        'language': 'vi-VN' # Default to Vietnamese
+        'language': 'vi-VN', # Default to Vietnamese
+        'auto_search': 'False'
     }
     return config
 
@@ -51,3 +52,7 @@ def get_download_dir():
 def get_voice_language():
     config = load_settings()
     return config.get('VoiceSearch', 'language', fallback='vi-VN')
+
+def get_voice_auto_search():
+    config = load_settings()
+    return config.getboolean('VoiceSearch', 'auto_search', fallback=False)

@@ -9,7 +9,7 @@ from modules.search_engine import search_youtube
 from modules.player import play_video
 from modules.app_updater import get_latest_version, run_updater
 import speech_recognition as sr
-from modules.settings_manager import load_settings, save_settings, get_download_dir, get_voice_language, DEFAULT_DOWNLOAD_DIR
+from modules.settings_manager import load_settings, save_settings, get_download_dir, get_voice_language, get_voice_auto_search, DEFAULT_DOWNLOAD_DIR
 from modules.downloader import download_media
 version="1.3"
 
@@ -484,7 +484,11 @@ class TeTubeFrame(wx.Frame):
         
         if query:
             self.search_input.SetValue(query)
-            self.on_search(None)
+            if get_voice_auto_search():
+                self.on_search(None)
+            else:
+                # Just focus the input so user can review/edit
+                self.search_input.SetFocus()
         elif error_msg:
             wx.MessageBox(error_msg, "Voice Search", wx.OK | wx.ICON_WARNING)
 
@@ -923,10 +927,39 @@ class LinkDetectedDialog(wx.Dialog):
         parent.set_accessible_name(download_btn, "Download video from clipboard")
         parent.set_accessible_name(cancel_btn, "Cancel and return to main interface")
 
+class HelpViewerDialog(wx.Dialog):
+    def __init__(self, parent, title, content):
+        super().__init__(parent, title=f"Content: {title}", size=(800, 600), style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER | wx.MAXIMIZE_BOX)
+        
+        panel = wx.Panel(self)
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        self.content_text = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | wx.TE_NOHIDESEL)
+        self.content_text.SetValue(content)
+        self.set_accessible_name(self.content_text, f"Document Content for {title}")
+        
+        close_btn = wx.Button(panel, id=wx.ID_CANCEL, label="Close")
+        self.set_accessible_name(close_btn, "Close document")
+        
+        vbox.Add(self.content_text, 1, wx.EXPAND | wx.ALL, 10)
+        vbox.Add(close_btn, 0, wx.ALIGN_RIGHT | wx.ALL, 10)
+        
+        panel.SetSizer(vbox)
+        self.Centre()
+        
+        # Set focus to text
+        wx.CallAfter(self.content_text.SetFocus)
+        wx.CallAfter(lambda: self.content_text.SetInsertionPoint(0))
+
+    def set_accessible_name(self, control, name):
+        control.SetName(name)
+        acc = control.GetAccessible()
+        if acc:
+            acc.SetName(name)
+
 class HelpDialog(wx.Dialog):
     def __init__(self, parent):
-        # Increased width significantly to ensure long lines are possible
-        super().__init__(parent, title="Help & Documentation", size=(1000, 700))
+        super().__init__(parent, title="Help & Documentation", size=(600, 400))
         self.dock_dir = os.path.join(os.getcwd(), "docks")
         self.init_ui()
         self.Centre()
@@ -951,50 +984,19 @@ class HelpDialog(wx.Dialog):
         panel = wx.Panel(self)
         self.main_vbox = wx.BoxSizer(wx.VERTICAL)
         
-        # List view container
-        self.list_panel = wx.Panel(panel)
-        list_vbox = wx.BoxSizer(wx.VERTICAL)
+        lbl = wx.StaticText(panel, label="Select a topic to view (Press Enter or Space to open):")
+        self.main_vbox.Add(lbl, 0, wx.ALL, 10)
         
-        lbl = wx.StaticText(self.list_panel, label="Select a topic to view (Press Enter or Space to open):")
-        list_vbox.Add(lbl, 0, wx.ALL, 10)
-        
-        self.file_list = wx.ListBox(self.list_panel, style=wx.LB_SINGLE)
+        self.file_list = wx.ListBox(panel, style=wx.LB_SINGLE)
         self.file_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_item_selected)
         self.file_list.Bind(wx.EVT_KEY_DOWN, self.on_list_key)
         self.set_accessible_name(self.file_list, "Documentation Topics")
         
-        list_vbox.Add(self.file_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
-        self.list_panel.SetSizer(list_vbox)
+        self.main_vbox.Add(self.file_list, 1, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, 10)
         
-        # Content view container (initially hidden)
-        self.content_panel = wx.Panel(panel)
-        content_vbox = wx.BoxSizer(wx.VERTICAL)
-        
-        self.content_label = wx.StaticText(self.content_panel, label="Document Content:")
-        # Use full width for TextCtrl, rich text for better handling of large files
-        self.content_text = wx.TextCtrl(self.content_panel, style=wx.TE_MULTILINE | wx.TE_READONLY | wx.TE_RICH2 | wx.TE_NOHIDESEL)
-        self.set_accessible_name(self.content_text, "Document Content")
-        
-        hbox = wx.BoxSizer(wx.HORIZONTAL)
-        self.close_file_btn = wx.Button(self.content_panel, label="Close Document")
-        self.close_file_btn.Bind(wx.EVT_BUTTON, self.on_close_document)
-        self.set_accessible_name(self.close_file_btn, "Close document and return to list")
-        hbox.Add(self.close_file_btn, 0, wx.ALL, 10)
-        
-        content_vbox.Add(self.content_label, 0, wx.ALL, 10)
-        # 0 padding on left/right for the text control to use every pixel
-        content_vbox.Add(self.content_text, 1, wx.EXPAND | wx.ALL, 2)
-        content_vbox.Add(hbox, 0, wx.ALIGN_RIGHT)
-        self.content_panel.SetSizer(content_vbox)
-        self.content_panel.Hide()
-        
-        # Return button (always visible at bottom)
-        self.return_btn = wx.Button(panel, label="Return to Main Window (Esc)")
-        self.return_btn.Bind(wx.EVT_BUTTON, lambda e: self.EndModal(wx.ID_OK))
+        self.return_btn = wx.Button(panel, id=wx.ID_CANCEL, label="Return to Main Window (Esc)")
         self.set_accessible_name(self.return_btn, "Return to Main Window")
         
-        self.main_vbox.Add(self.list_panel, 1, wx.EXPAND | wx.ALL, 0)
-        self.main_vbox.Add(self.content_panel, 0, wx.EXPAND | wx.ALL, 0)
         self.main_vbox.Add(self.return_btn, 0, wx.ALIGN_CENTER | wx.ALL, 15)
         
         panel.SetSizer(self.main_vbox)
@@ -1025,28 +1027,15 @@ class HelpDialog(wx.Dialog):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                self.content_text.SetValue(content)
                 
-                # Show content, hide list
-                self.list_panel.Hide()
-                self.main_vbox.Detach(self.content_panel)
-                # Ensure the panel expands fully in the main sizer
-                self.main_vbox.Insert(0, self.content_panel, 1, wx.EXPAND | wx.ALL, 0)
-                self.content_panel.Show()
+                # Show in new dialog
+                viewer = HelpViewerDialog(self, self.file_list.GetString(selection), content)
+                viewer.ShowModal()
+                viewer.Destroy()
                 
-                self.Layout()
-                self.content_text.SetFocus()
-                self.content_text.SetInsertionPoint(0) # Go to start of doc
+                self.file_list.SetFocus()
             except Exception as e:
                 wx.MessageBox(f"Error reading file: {e}", "Error", wx.OK | wx.ICON_ERROR)
-
-    def on_close_document(self, event):
-        self.content_panel.Hide()
-        self.main_vbox.Detach(self.content_panel)
-        self.main_vbox.Insert(0, self.content_panel, 0, wx.EXPAND | wx.ALL, 0) # Hide it back
-        self.list_panel.Show()
-        self.Layout()
-        self.file_list.SetFocus()
 
 class SettingsDialog(wx.Dialog):
     def __init__(self, parent):
@@ -1153,6 +1142,14 @@ class SettingsDialog(wx.Dialog):
         vbox.Add(lbl, 0, wx.ALL, 10)
         vbox.Add(self.lang_combo, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
         
+        # Auto-search Checkbox
+        self.auto_search_cb = wx.CheckBox(self.voice_tab, label="Auto-search after voice input")
+        current_auto_search = self.config.getboolean('VoiceSearch', 'auto_search', fallback=False)
+        self.auto_search_cb.SetValue(current_auto_search)
+        self.set_accessible_name(self.auto_search_cb, "Auto-search after voice input")
+        
+        vbox.Add(self.auto_search_cb, 0, wx.ALL | wx.LEFT, 10)
+        
         self.voice_tab.SetSizer(vbox)
 
     def on_browse(self, event):
@@ -1172,6 +1169,8 @@ class SettingsDialog(wx.Dialog):
         lang_index = self.lang_combo.GetSelection()
         if lang_index != wx.NOT_FOUND:
             self.config['VoiceSearch']['language'] = self.languages[lang_index][1]
+            
+        self.config['VoiceSearch']['auto_search'] = str(self.auto_search_cb.GetValue())
             
         save_settings(self.config)
         self.EndModal(wx.ID_OK)
