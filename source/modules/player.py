@@ -43,6 +43,13 @@ class PlayerFrame(wx.Frame):
         self.instance = vlc.Instance()
         self.media_player = self.instance.media_player_new()
         
+        # Set output device if configured
+        out_dev = get_playback_device()
+        if out_dev and out_dev != 'default':
+            self.media_player.audio_output_device_set(None, out_dev.encode('utf-8'))
+            
+        self.seek_ms = get_seek_time() * 1000
+        
         self.init_ui()
         self.Bind(wx.EVT_CLOSE, self.on_close)
         
@@ -112,7 +119,7 @@ class PlayerFrame(wx.Frame):
         ctrl_vbox.Add(btn_hbox, 0, wx.EXPAND | wx.ALL, 5)
         
         # Keyboard Control Area
-        # We use a Button so NVDA stays in Focus Mode (not Browse Mode) and allows arrow keys to pass through
+        # We use a Button so NVDA stays in Focus Mode (not Browse Mode) and does NOT swallow arrow keys for text navigation
         self.kb_area = wx.Button(self.panel, label="Keyboard Control Area")
         self.set_accessible_name(self.kb_area, "Keyboard Control Area. Press Space to play or pause, Arrows for volume and seek.")
         ctrl_vbox.Add(self.kb_area, 0, wx.EXPAND | wx.ALL, 5)
@@ -128,6 +135,7 @@ class PlayerFrame(wx.Frame):
         
         # Keyboard bindings on panel and frame to catch everything
         self.Bind(wx.EVT_CHAR_HOOK, self.on_key_down)
+        self.kb_area.Bind(wx.EVT_KEY_DOWN, self.on_key_down)
 
     def set_accessible_name(self, control, name):
         control.SetName(name)
@@ -139,8 +147,7 @@ class PlayerFrame(wx.Frame):
         media = self.instance.media_new(stream_url)
         self.media_player.set_media(media)
         self.media_player.play()
-        if not self.audio_only:
-            self.ShowFullScreen(True)
+        self.ShowFullScreen(True)
         # Set focus to keyboard area instead of play button
         wx.CallAfter(self.kb_area.SetFocus)
         wx.CallAfter(self.update_play_btn_state)
@@ -218,12 +225,16 @@ class PlayerFrame(wx.Frame):
             self.on_play_pause(None)
         elif keycode == wx.WXK_LEFT:
             cur = self.media_player.get_time()
-            if cur > 0:
-                self.media_player.set_time(max(0, cur - self.seek_ms))
+            if cur >= 0:
+                new_time = max(0, cur - self.seek_ms)
+                self.media_player.set_time(new_time)
+                self._speak_target_time(new_time)
         elif keycode == wx.WXK_RIGHT:
             cur = self.media_player.get_time()
             if cur >= 0:
-                self.media_player.set_time(cur + self.seek_ms)
+                new_time = cur + self.seek_ms
+                self.media_player.set_time(new_time)
+                self._speak_target_time(new_time)
         elif keycode == wx.WXK_HOME:
             self.media_player.set_time(0)
             self.speak_text("Restarted from beginning")
@@ -261,6 +272,9 @@ class PlayerFrame(wx.Frame):
             
     def speak_current_time(self):
         time_ms = self.media_player.get_time()
+        self._speak_target_time(time_ms)
+
+    def _speak_target_time(self, time_ms):
         if time_ms >= 0:
             s = int(time_ms / 1000)
             m, s = divmod(s, 60)
