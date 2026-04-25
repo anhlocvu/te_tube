@@ -1038,8 +1038,14 @@ class HelpDialog(wx.Dialog):
 
 class SettingsDialog(wx.Dialog):
     def __init__(self, parent):
-        super().__init__(parent, title="Settings", size=(500, 400))
+        super().__init__(parent, title="Settings", size=(500, 450))
         self.config = load_settings()
+        
+        # We need to get audio devices for the playback tab
+        # Import here to avoid circular imports if player imports gui
+        from modules.player import get_audio_devices
+        self.audio_devices = get_audio_devices()
+        
         self.init_ui()
         self.Centre()
 
@@ -1057,12 +1063,15 @@ class SettingsDialog(wx.Dialog):
         self.notebook = wx.Notebook(panel)
         self.general_tab = wx.Panel(self.notebook)
         self.voice_tab = wx.Panel(self.notebook)
+        self.playback_tab = wx.Panel(self.notebook)
         
         self.notebook.AddPage(self.general_tab, "General")
         self.notebook.AddPage(self.voice_tab, "Voice Search")
+        self.notebook.AddPage(self.playback_tab, "Playback")
         
         self.setup_general_tab()
         self.setup_voice_tab()
+        self.setup_playback_tab()
         
         vbox.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 10)
         
@@ -1151,6 +1160,51 @@ class SettingsDialog(wx.Dialog):
         
         self.voice_tab.SetSizer(vbox)
 
+    def setup_playback_tab(self):
+        vbox = wx.BoxSizer(wx.VERTICAL)
+        
+        # Audio Device Selection
+        lbl_dev = wx.StaticText(self.playback_tab, label="Output Device:")
+        
+        # Populate from self.audio_devices
+        dev_labels = [d[1] for d in self.audio_devices]
+        current_dev = self.config.get('Playback', 'output_device', fallback='default')
+        
+        current_dev_index = 0
+        for i, d in enumerate(self.audio_devices):
+            if d[0] == current_dev:
+                current_dev_index = i
+                break
+                
+        self.dev_combo = wx.ComboBox(self.playback_tab, choices=dev_labels, style=wx.CB_READONLY)
+        self.dev_combo.SetSelection(current_dev_index)
+        self.set_accessible_name(self.dev_combo, "Select output device")
+        
+        vbox.Add(lbl_dev, 0, wx.ALL, 10)
+        vbox.Add(self.dev_combo, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        
+        # Seek Time Selection
+        lbl_seek = wx.StaticText(self.playback_tab, label="Seek Time:")
+        
+        self.seek_times = [("5 seconds", 5), ("10 seconds", 10), ("15 seconds", 15), ("30 seconds", 30)]
+        seek_labels = [s[0] for s in self.seek_times]
+        current_seek = self.config.getint('Playback', 'seek_time', fallback=10)
+        
+        current_seek_index = 1 # default 10s
+        for i, s in enumerate(self.seek_times):
+            if s[1] == current_seek:
+                current_seek_index = i
+                break
+                
+        self.seek_combo = wx.ComboBox(self.playback_tab, choices=seek_labels, style=wx.CB_READONLY)
+        self.seek_combo.SetSelection(current_seek_index)
+        self.set_accessible_name(self.seek_combo, "Select seek time")
+        
+        vbox.Add(lbl_seek, 0, wx.ALL, 10)
+        vbox.Add(self.seek_combo, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 10)
+        
+        self.playback_tab.SetSizer(vbox)
+
     def on_browse(self, event):
         default_path = self.dir_input.GetValue()
         dlg = wx.DirDialog(self, "Choose Download Directory", defaultPath=default_path, style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST)
@@ -1170,6 +1224,14 @@ class SettingsDialog(wx.Dialog):
             self.config['VoiceSearch']['language'] = self.languages[lang_index][1]
             
         self.config['VoiceSearch']['auto_search'] = str(self.auto_search_cb.GetValue())
+        
+        dev_index = self.dev_combo.GetSelection()
+        if dev_index != wx.NOT_FOUND:
+            self.config['Playback']['output_device'] = self.audio_devices[dev_index][0]
+            
+        seek_index = self.seek_combo.GetSelection()
+        if seek_index != wx.NOT_FOUND:
+            self.config['Playback']['seek_time'] = str(self.seek_times[seek_index][1])
             
         save_settings(self.config)
         self.EndModal(wx.ID_OK)

@@ -4,6 +4,7 @@ import threading
 import subprocess
 import json
 import time
+from modules.settings_manager import get_playback_device, get_seek_time
 
 # Add VLC path
 vlc_lib_path = os.path.abspath(os.path.join(os.getcwd(), 'vlc lib'))
@@ -12,6 +13,26 @@ if os.name == 'nt' and os.path.exists(vlc_lib_path):
     os.environ['PYTHON_VLC_MODULE_PATH'] = vlc_lib_path
 
 import vlc
+
+def get_audio_devices():
+    """Returns a list of tuples: (device_id, device_description)"""
+    devices = [('default', 'Default Device')]
+    try:
+        inst = vlc.Instance()
+        mp = inst.media_player_new()
+        devs = mp.audio_output_device_enum()
+        if devs:
+            dev = devs
+            while dev:
+                d = dev.contents
+                dev_id = d.device.decode('utf-8', 'ignore')
+                dev_desc = d.description.decode('utf-8', 'ignore')
+                if dev_id: # Ignore empty device id which is usually default
+                    devices.append((dev_id, dev_desc))
+                dev = d.next
+    except Exception as e:
+        print(f"Error getting audio devices: {e}")
+    return devices
 
 class PlayerFrame(wx.Frame):
     def __init__(self, parent, title, audio_only):
@@ -89,6 +110,13 @@ class PlayerFrame(wx.Frame):
         btn_hbox.Add(vol_hbox, 1, wx.EXPAND)
         
         ctrl_vbox.Add(btn_hbox, 0, wx.EXPAND | wx.ALL, 5)
+        
+        # Keyboard Control Area
+        # We use a Button so NVDA stays in Focus Mode (not Browse Mode) and allows arrow keys to pass through
+        self.kb_area = wx.Button(self.panel, label="Keyboard Control Area")
+        self.set_accessible_name(self.kb_area, "Keyboard Control Area. Press Space to play or pause, Arrows for volume and seek.")
+        ctrl_vbox.Add(self.kb_area, 0, wx.EXPAND | wx.ALL, 5)
+        
         vbox.Add(ctrl_vbox, 0, wx.EXPAND | wx.ALL, 5)
         
         self.panel.SetSizer(vbox)
@@ -113,8 +141,8 @@ class PlayerFrame(wx.Frame):
         self.media_player.play()
         if not self.audio_only:
             self.ShowFullScreen(True)
-        # Set focus to play button
-        wx.CallAfter(self.play_btn.SetFocus)
+        # Set focus to keyboard area instead of play button
+        wx.CallAfter(self.kb_area.SetFocus)
         wx.CallAfter(self.update_play_btn_state)
 
     def on_play_pause(self, event):
@@ -181,18 +209,21 @@ class PlayerFrame(wx.Frame):
 
     def on_key_down(self, event):
         keycode = event.GetKeyCode()
-        if keycode == wx.WXK_ESCAPE:
+        if keycode == ord('K') and event.AltDown():
+            self.kb_area.SetFocus()
+            self.speak_text("Keyboard control area focused")
+        elif keycode == wx.WXK_ESCAPE:
             self.Close()
         elif keycode == wx.WXK_SPACE:
             self.on_play_pause(None)
         elif keycode == wx.WXK_LEFT:
             cur = self.media_player.get_time()
             if cur > 0:
-                self.media_player.set_time(max(0, cur - 10000))
+                self.media_player.set_time(max(0, cur - self.seek_ms))
         elif keycode == wx.WXK_RIGHT:
             cur = self.media_player.get_time()
-            if cur > 0:
-                self.media_player.set_time(cur + 10000)
+            if cur >= 0:
+                self.media_player.set_time(cur + self.seek_ms)
         elif keycode == wx.WXK_HOME:
             self.media_player.set_time(0)
             self.speak_text("Restarted from beginning")

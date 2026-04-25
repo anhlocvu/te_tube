@@ -15,6 +15,10 @@ def get_default_settings():
         'language': 'vi-VN', # Default to Vietnamese
         'auto_search': 'False'
     }
+    config['Playback'] = {
+        'output_device': 'default',
+        'seek_time': '10'
+    }
     return config
 
 def load_settings():
@@ -56,3 +60,11 @@ def get_voice_language():
 def get_voice_auto_search():
     config = load_settings()
     return config.getboolean('VoiceSearch', 'auto_search', fallback=False)
+
+def get_playback_device():
+    config = load_settings()
+    return config.get('Playback', 'output_device', fallback='default')
+
+def get_seek_time():
+    config = load_settings()
+    return config.getint('Playback', 'seek_time', fallback=10)
