@@ -50,28 +50,43 @@ class PlayerFrame(wx.Frame):
         # Controls panel
         ctrl_vbox = wx.BoxSizer(wx.VERTICAL)
         
-        # Time Slider
+        # Title display (Optional but good for UI)
+        self.status_text = wx.StaticText(self.panel, label="Status: Playing")
+        self.set_accessible_name(self.status_text, "Status: Playing")
+        ctrl_vbox.Add(self.status_text, 0, wx.ALIGN_CENTER | wx.TOP, 5)
+
+        # Time Slider and Labels
         time_hbox = wx.BoxSizer(wx.HORIZONTAL)
-        self.time_lbl = wx.StaticText(self.panel, label="00:00 / 00:00")
+        self.curr_time_lbl = wx.StaticText(self.panel, label="00:00")
         self.time_slider = wx.Slider(self.panel, value=0, minValue=0, maxValue=1000)
-        self.time_slider.Bind(wx.EVT_SCROLL, self.on_set_time)
-        time_hbox.Add(self.time_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 5)
-        time_hbox.Add(self.time_slider, 1, wx.EXPAND)
-        ctrl_vbox.Add(time_hbox, 0, wx.EXPAND | wx.ALL, 5)
+        self.total_time_lbl = wx.StaticText(self.panel, label="00:00")
         
-        # Buttons
+        self.time_slider.Bind(wx.EVT_SCROLL, self.on_set_time)
+        
+        time_hbox.Add(self.curr_time_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 10)
+        time_hbox.Add(self.time_slider, 1, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
+        time_hbox.Add(self.total_time_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, 10)
+        ctrl_vbox.Add(time_hbox, 0, wx.EXPAND | wx.TOP, 10)
+        
+        # Buttons and Volume
         btn_hbox = wx.BoxSizer(wx.HORIZONTAL)
+        
+        # Playback group
+        play_hbox = wx.BoxSizer(wx.HORIZONTAL)
         self.play_btn = wx.Button(self.panel, label="Pause")
         self.play_btn.Bind(wx.EVT_BUTTON, self.on_play_pause)
+        play_hbox.Add(self.play_btn, 0, wx.ALL, 5)
         
-        # Volume Slider
+        # Volume group
+        vol_hbox = wx.BoxSizer(wx.HORIZONTAL)
         vol_lbl = wx.StaticText(self.panel, label="Volume:")
         self.vol_slider = wx.Slider(self.panel, value=100, minValue=0, maxValue=100)
         self.vol_slider.Bind(wx.EVT_SCROLL, self.on_set_volume)
+        vol_hbox.Add(vol_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 15)
+        vol_hbox.Add(self.vol_slider, 1, wx.EXPAND | wx.ALL, 5)
         
-        btn_hbox.Add(self.play_btn, 0, wx.ALL, 5)
-        btn_hbox.Add(vol_lbl, 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, 15)
-        btn_hbox.Add(self.vol_slider, 1, wx.EXPAND | wx.ALL, 5)
+        btn_hbox.Add(play_hbox, 0, wx.EXPAND)
+        btn_hbox.Add(vol_hbox, 1, wx.EXPAND)
         
         ctrl_vbox.Add(btn_hbox, 0, wx.EXPAND | wx.ALL, 5)
         vbox.Add(ctrl_vbox, 0, wx.EXPAND | wx.ALL, 5)
@@ -96,7 +111,8 @@ class PlayerFrame(wx.Frame):
         media = self.instance.media_new(stream_url)
         self.media_player.set_media(media)
         self.media_player.play()
-        self.ShowFullScreen(True)
+        if not self.audio_only:
+            self.ShowFullScreen(True)
         # Set focus to play button
         wx.CallAfter(self.play_btn.SetFocus)
         wx.CallAfter(self.update_play_btn_state)
@@ -106,18 +122,24 @@ class PlayerFrame(wx.Frame):
             self.media_player.pause()
             self.play_btn.SetLabel("Play")
             self.set_accessible_name(self.play_btn, "Play")
+            self.status_text.SetLabel("Status: Paused")
+            self.speak_text("Paused")
         else:
             self.media_player.play()
             self.play_btn.SetLabel("Pause")
             self.set_accessible_name(self.play_btn, "Pause")
+            self.status_text.SetLabel("Status: Playing")
+            self.speak_text("Playing")
 
     def update_play_btn_state(self):
         if self.media_player.is_playing():
             self.play_btn.SetLabel("Pause")
             self.set_accessible_name(self.play_btn, "Pause")
+            self.status_text.SetLabel("Status: Playing")
         else:
             self.play_btn.SetLabel("Play")
             self.set_accessible_name(self.play_btn, "Play")
+            self.status_text.SetLabel("Status: Paused")
 
     def on_set_time(self, event):
         val = self.time_slider.GetValue()
@@ -149,8 +171,9 @@ class PlayerFrame(wx.Frame):
             # Update slider
             pos = int((time_ms / length) * 1000)
             self.time_slider.SetValue(pos)
-            # Update label
-            self.time_lbl.SetLabel(f"{self.format_time(time_ms)} / {self.format_time(length)}")
+            # Update labels
+            self.curr_time_lbl.SetLabel(self.format_time(time_ms))
+            self.total_time_lbl.SetLabel(self.format_time(length))
             
         state = self.media_player.get_state()
         if state == vlc.State.Ended:
@@ -170,6 +193,14 @@ class PlayerFrame(wx.Frame):
             cur = self.media_player.get_time()
             if cur > 0:
                 self.media_player.set_time(cur + 10000)
+        elif keycode == wx.WXK_HOME:
+            self.media_player.set_time(0)
+            self.speak_text("Restarted from beginning")
+        elif keycode == wx.WXK_END:
+            length = self.media_player.get_length()
+            if length > 0:
+                self.media_player.set_time(max(0, length - 1000))
+                self.speak_text("Jumped to end")
         elif keycode == wx.WXK_UP:
             vol = self.media_player.audio_get_volume()
             new_vol = min(100, vol + 5)

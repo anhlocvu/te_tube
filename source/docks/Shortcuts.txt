@@ -24,6 +24,8 @@ VLC PLAYER CONTROLS (During Playback)
 When the player window is active, use these shortcuts:
 - Space: Toggle Pause and Play.
 - Left and Right Arrows: Seek backward or forward 10 seconds.
+- Home: Seek to the beginning of the song.
+- End: Seek to the end of the song.
 - Up and Down Arrows: Decrease or Increase volume.
 - t: Speak current video time.
 - Escape (Esc): Stop playback and close the player window.
