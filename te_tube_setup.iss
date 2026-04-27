@@ -2,15 +2,15 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "te_tube"
-#define MyAppVersion "1.3"
+#define MyAppVersion "2.0"
 #define MyAppPublisher "technology entertainment"
-#define MyAppURL "http://lc.ktgame207.com/"
+#define MyAppURL "https://lc.ktgame207.com/"
 #define MyAppExeName "te_tube.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{26AE625B-CA5A-4733-8740-481FE82DC636}
+AppId={{DA669C94-AF02-473F-837C-447F3AC29433}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
@@ -20,11 +20,12 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={userappdata}\{#MyAppName}
 DisableProgramGroupPage=yes
+InfoBeforeFile=D:\python code\te_tube\source\docks\Introduction.txt
 ; Uncomment the following line to run in non administrative install mode (install for current user only.)
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=commandline
 OutputDir=D:\python code\te_tube
-OutputBaseFilename=te_tube v1.3 setup
+OutputBaseFilename=te_tube setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
@@ -36,8 +37,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-Source: "D:\python code\te_tube\main.dist\te_tube.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "D:\python code\te_tube\main.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "D:\python code\te_tube\source\main.dist\te_tube.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "D:\python code\te_tube\source\main.dist\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

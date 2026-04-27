@@ -11,7 +11,7 @@ from modules.app_updater import get_latest_version, run_updater
 import speech_recognition as sr
 from modules.settings_manager import load_settings, save_settings, get_download_dir, get_voice_language, get_voice_auto_search, DEFAULT_DOWNLOAD_DIR
 from modules.downloader import download_media
-version="1.3"
+version="2.0"
 
 FAVORITES_FILE = "favorites.json"
 WATCH_HISTORY_FILE = "watch_history.json"
