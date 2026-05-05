@@ -1,8 +1,9 @@
-TE_TUBE KEYBOARD SHORTCUTS
+## TE_TUBE KEYBOARD SHORTCUTS
 
 Te_Tube is designed to be fully operable via keyboard, which is essential for users of screen readers like NVDA.
 
-GLOBAL SHORTCUTS
+### GLOBAL SHORTCUTS
+
 - F1: Open the Help Documentation dialog.
 - F4: Open the Settings dialog.
 - Ctrl + D: Open your configured downloads folder in File Explorer.
@@ -10,17 +11,20 @@ GLOBAL SHORTCUTS
 - Tab or Shift + Tab: Move focus between different controls (input boxes, lists, buttons).
 - Ctrl + Tab: Switch between tabs (Search, Favorites, History, etc.).
 
-LIST NAVIGATION (Search Results, Favorites, History)
+### LIST NAVIGATION (Search Results, Favorites, History)
+
 - Up and Down Arrows: Move through the list of videos.
 - Enter or Numpad Enter: Play the selected video.
 - Shift + F10 or Application/Menu Key: Open the context menu for the selected item.
 
-DIALOGS (Settings, Download Options, Help)
+### DIALOGS (Settings, Download Options, Help)
+
 - Enter: Confirm and apply (equivalent to pressing OK/Download/Play).
 - Escape (Esc): Cancel and close the dialog without saving changes.
 - Space (in Help Dialog): Open the selected documentation file.
 
-VLC PLAYER CONTROLS (During Playback)
+### VLC PLAYER CONTROLS (During Playback)
+
 When the player window is active, use these shortcuts:
 - Space: Toggle Pause and Play.
 - Left and Right Arrows: Seek backward or forward 10 seconds.

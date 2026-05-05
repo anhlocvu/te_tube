@@ -1,11 +1,13 @@
-TE_TUBE INTRODUCTION
+## TE_TUBE INTRODUCTION
 
 Te_Tube is a specialized YouTube client designed with accessibility at its core, specifically tailored for visually impaired users. Developed by Technology Entertainment (led by Vu Anh Loc), this software provides a seamless, ad-free YouTube experience.
 
-VISION
+## VISION
+
 The project aims to break down digital barriers for the blind and visually impaired community, providing an intuitive interface that works perfectly with screen readers like NVDA.
 
-KEY CAPABILITIES
+### KEY CAPABILITIES
+
 - Ad-Free Playback: Watch videos without interruptions.
 - Accessibility Optimized: Custom-built GUI elements with accessible names and keyboard-centric navigation.
 - Voice Search: Speak your queries naturally to find videos instantly.
@@ -15,7 +17,8 @@ KEY CAPABILITIES
 - Personalized Lists: Maintain your own Favorites and Watch History.
 - Self-Updating: Automatically keeps itself and its core components (like yt-dlp) up to date.
 
-AUTHORSHIP
-Created by: Vu Anh Loc (Lc_Boy)
-Organization: Technology Entertainment
-Release Date: 2026
+## AUTHORSHIP
+
+- Created by: Vu Anh Loc (Lc_Boy)
+- Organization: Technology Entertainment
+- Release Date: 2026
