@@ -195,7 +195,7 @@ class TeTubeFrame(wx.Frame):
         # Result list
         self.result_list = wx.ListBox(self.search_tab, style=wx.LB_SINGLE)
         self.result_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play)
-        self.result_list.Bind(wx.EVT_CONTEXT_MENU, self.on_context_menu)
+        self.result_list.Bind(wx.EVT_CONTEXT_MENU, lambda event: self.show_video_context_menu(event, 1))
         
         # Accessibility for list box
         self.set_accessible_name(self.result_list, "Search Results")
@@ -246,7 +246,7 @@ class TeTubeFrame(wx.Frame):
         vbox = wx.BoxSizer(wx.VERTICAL)
         self.favorite_list = wx.ListBox(self.favorite_tab, style=wx.LB_SINGLE)
         self.favorite_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_favorite)
-        self.favorite_list.Bind(wx.EVT_CONTEXT_MENU, self.on_favorite_context_menu)
+        self.favorite_list.Bind(wx.EVT_CONTEXT_MENU, lambda event: self.show_video_context_menu(event, 2))
         self.set_accessible_name(self.favorite_list, "Favorite Videos List")
         vbox.Add(self.favorite_list, 1, wx.EXPAND | wx.ALL, 5)
         
@@ -262,7 +262,7 @@ class TeTubeFrame(wx.Frame):
         vbox = wx.BoxSizer(wx.VERTICAL)
         self.history_list = wx.ListBox(self.history_tab, style=wx.LB_SINGLE)
         self.history_list.Bind(wx.EVT_LISTBOX_DCLICK, self.on_play_history)
-        self.history_list.Bind(wx.EVT_CONTEXT_MENU, self.on_history_context_menu)
+        self.history_list.Bind(wx.EVT_CONTEXT_MENU, lambda event: self.show_video_context_menu(event, 3))
         self.set_accessible_name(self.history_list, "Watch History List")
         vbox.Add(self.history_list, 1, wx.EXPAND | wx.ALL, 5)
         
@@ -672,47 +672,39 @@ class TeTubeFrame(wx.Frame):
             self.play_url(video_data['url'], title=video_data['title'], audio_only=True)
             self.add_to_history(video_data)
 
-    def on_context_menu(self, event):
-        selection = self.result_list.GetSelection()
-        if selection == wx.NOT_FOUND:
-            return
-
-        menu = wx.Menu()
-        play_item = menu.Append(wx.ID_ANY, "&Play\tEnter")
-        self.Bind(wx.EVT_MENU, self.on_play, play_item)
-
-        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
-        self.Bind(wx.EVT_MENU, self.on_play_audio, play_audio_item)
-
-        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
-        self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
-
-        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel")
-        self.Bind(wx.EVT_MENU, self.on_go_to_channel, go_channel_item)
-
-        copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
-        self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
-
-        favorite_item = menu.Append(wx.ID_ANY, "&Add Favorite")
-        self.Bind(wx.EVT_MENU, self.on_add_favorite, favorite_item)
-
-        download_item = menu.Append(wx.ID_ANY, "&Download")
-        self.Bind(wx.EVT_MENU, self.on_download, download_item)
+    def show_video_context_menu(self, event, menu_type):
+        """
+        Hiển thị context menu chung cho các danh sách video.
+        menu_type: 
+          1 = Tab Tìm kiếm
+          2 = Tab Video yêu thích
+          3 = Tab Lịch sử xem
+        """
+        tab_config = {
+            1: (self.result_list, self.on_play, self.on_play_audio, self.on_download),
+            2: (self.favorite_list, self.on_play_favorite, self.on_play_favorite_audio, self.on_download_favorite),
+            3: (self.history_list, self.on_play_history, self.on_play_history_audio, self.on_download_history)
+        }
         
-        self.PopupMenu(menu)
-        menu.Destroy()
+        config = tab_config.get(menu_type)
+        if not config:
+            return
+            
+        listbox, play_handler, play_audio_handler, download_handler = config
 
-    def on_favorite_context_menu(self, event):
-        selection = self.favorite_list.GetSelection()
+        selection = listbox.GetSelection()
         if selection == wx.NOT_FOUND:
             return
 
         menu = wx.Menu()
-        play_item = menu.Append(wx.ID_ANY, "&Play")
-        self.Bind(wx.EVT_MENU, self.on_play_favorite, play_item)
+
+        # --- CÁC ITEM CHUNG (Không nằm trong if) ---
+        play_label = "&Play\tEnter" if menu_type == 1 else "&Play"
+        play_item = menu.Append(wx.ID_ANY, play_label)
+        self.Bind(wx.EVT_MENU, play_handler, play_item)
 
         play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
-        self.Bind(wx.EVT_MENU, self.on_play_favorite_audio, play_audio_item)
+        self.Bind(wx.EVT_MENU, play_audio_handler, play_audio_item)
 
         open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
         self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
@@ -723,44 +715,24 @@ class TeTubeFrame(wx.Frame):
         copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
         self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
 
-        remove_item = menu.Append(wx.ID_ANY, "&Remove from favorite")
-        self.Bind(wx.EVT_MENU, self.on_remove_favorite, remove_item)
+        # --- CÁC ITEM ĐẶC THÙ (Dùng if để kiểm tra) ---
+        if menu_type == 1:
+            favorite_item = menu.Append(wx.ID_ANY, "&Add Favorite")
+            self.Bind(wx.EVT_MENU, self.on_add_favorite, favorite_item)
+        elif menu_type == 2:
+            remove_item = menu.Append(wx.ID_ANY, "&Remove from favorite")
+            self.Bind(wx.EVT_MENU, self.on_remove_favorite, remove_item)
+        elif menu_type == 3:
+            remove_item = menu.Append(wx.ID_ANY, "&Remove from history")
+            self.Bind(wx.EVT_MENU, self.on_remove_history, remove_item)
 
+        # --- ITEM TẢI XUỐNG CHUNG ---
         download_item = menu.Append(wx.ID_ANY, "&Download")
-        self.Bind(wx.EVT_MENU, self.on_download_favorite, download_item)
+        self.Bind(wx.EVT_MENU, download_handler, download_item)
 
         self.PopupMenu(menu)
         menu.Destroy()
 
-    def on_history_context_menu(self, event):
-        selection = self.history_list.GetSelection()
-        if selection == wx.NOT_FOUND:
-            return
-
-        menu = wx.Menu()
-        play_item = menu.Append(wx.ID_ANY, "&Play")
-        self.Bind(wx.EVT_MENU, self.on_play_history, play_item)
-
-        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
-        self.Bind(wx.EVT_MENU, self.on_play_history_audio, play_audio_item)
-
-        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
-        self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
-
-        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel")
-        self.Bind(wx.EVT_MENU, self.on_go_to_channel, go_channel_item)
-
-        copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
-        self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
-
-        remove_item = menu.Append(wx.ID_ANY, "&Remove from history")
-        self.Bind(wx.EVT_MENU, self.on_remove_history, remove_item)
-
-        download_item = menu.Append(wx.ID_ANY, "&Download")
-        self.Bind(wx.EVT_MENU, self.on_download_history, download_item)
-
-        self.PopupMenu(menu)
-        menu.Destroy()
 
     def on_download_favorite(self, event):
         selection = self.favorite_list.GetSelection()
