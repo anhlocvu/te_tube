@@ -29,6 +29,14 @@ class TeTubeFrame(wx.Frame):
         self.history = self.load_data(WATCH_HISTORY_FILE)
         self.last_clipboard_text = ""
         self.is_listening = False # Flag to prevent multiple voice search triggers
+        
+        # Initialize screen reader speech library
+        try:
+            from accessible_output2.outputs.auto import Auto
+            self.speaker = Auto()
+        except Exception as e:
+            self.speaker = None
+            
         self.init_ui()
         self.Centre()
         
@@ -407,22 +415,52 @@ class TeTubeFrame(wx.Frame):
 
     def on_key_down(self, event):
         keycode = event.GetKeyCode()
-        if keycode in [wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER]:
-            focused = wx.Window.FindFocus()
-            if focused == self.result_list:
-                self.on_play(None)
+        focused = wx.Window.FindFocus()
+        
+        # Check if focus is in one of our video lists
+        if focused in [self.result_list, self.favorite_list, self.history_list]:
+            # 1. Shift+Enter -> Play as Audio
+            if keycode in [wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER] and event.ShiftDown():
+                if focused == self.result_list:
+                    self.on_play_audio(None)
+                elif focused == self.favorite_list:
+                    self.on_play_favorite_audio(None)
+                elif focused == self.history_list:
+                    self.on_play_history_audio(None)
                 return
-            elif focused == self.favorite_list:
-                self.on_play_favorite(None)
+            # 2. Enter (without Shift) -> Play
+            elif keycode in [wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER] and not event.HasAnyModifiers():
+                if focused == self.result_list:
+                    self.on_play(None)
+                elif focused == self.favorite_list:
+                    self.on_play_favorite(None)
+                elif focused == self.history_list:
+                    self.on_play_history(None)
                 return
-            elif focused == self.history_list:
-                self.on_play_history(None)
+            # 3. Ctrl+C -> Copy Link
+            elif event.ControlDown() and keycode in [ord('C'), ord('c'), 3]:
+                self.on_copy_link(None)
                 return
-            elif focused == self.search_input:
-                # Let the normal on_search handle it
-                event.Skip()
+            # 4. Ctrl+O -> Open in Browser
+            elif event.ControlDown() and keycode in [ord('O'), ord('o'), 15]:
+                self.on_open_in_browser(None)
                 return
-        elif keycode == wx.WXK_F1:
+            # 5. Ctrl+G -> Go to Channel
+            elif event.ControlDown() and keycode in [ord('G'), ord('g'), 7]:
+                self.on_go_to_channel(None)
+                return
+            # 6. Ctrl+Shift+D -> Download
+            elif event.ControlDown() and event.ShiftDown() and keycode in [ord('D'), ord('d'), 4]:
+                if focused == self.result_list:
+                    self.on_download(None)
+                elif focused == self.favorite_list:
+                    self.on_download_favorite(None)
+                elif focused == self.history_list:
+                    self.on_download_history(None)
+                return
+
+        # Global hotkeys
+        if keycode == wx.WXK_F1:
             self.on_help(None)
             return
         elif keycode == wx.WXK_F4 and not event.AltDown():
@@ -563,7 +601,11 @@ class TeTubeFrame(wx.Frame):
                 wx.TheClipboard.Close()
                 # Update last_clipboard_text to prevent Te_Tube from detecting its own copy
                 self.last_clipboard_text = video_url
-                wx.MessageBox("Link copied to clipboard!", "Success", wx.OK | wx.ICON_INFORMATION)
+                msg = "Link copied to clipboard!"
+                if hasattr(self, 'speaker') and self.speaker:
+                    self.speaker.speak(msg)
+                else:
+                    wx.MessageBox(msg, "Success", wx.OK | wx.ICON_INFORMATION)
 
     def on_open_in_browser(self, event):
         focused = wx.Window.FindFocus()
@@ -699,20 +741,20 @@ class TeTubeFrame(wx.Frame):
         menu = wx.Menu()
 
         # --- CÁC ITEM CHUNG (Không nằm trong if) ---
-        play_label = "&Play\tEnter" if menu_type == 1 else "&Play"
+        play_label = "&Play\tEnter" if menu_type == 1 else "&Play\tEnter"
         play_item = menu.Append(wx.ID_ANY, play_label)
         self.Bind(wx.EVT_MENU, play_handler, play_item)
 
-        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio")
+        play_audio_item = menu.Append(wx.ID_ANY, "Play as &Audio\tShift+Enter")
         self.Bind(wx.EVT_MENU, play_audio_handler, play_audio_item)
 
-        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser")
+        open_browser_item = menu.Append(wx.ID_ANY, "Open in &Browser\tCtrl+O")
         self.Bind(wx.EVT_MENU, self.on_open_in_browser, open_browser_item)
 
-        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel")
+        go_channel_item = menu.Append(wx.ID_ANY, "Go to &Channel\tCtrl+G")
         self.Bind(wx.EVT_MENU, self.on_go_to_channel, go_channel_item)
 
-        copy_item = menu.Append(wx.ID_ANY, "&Copy Link")
+        copy_item = menu.Append(wx.ID_ANY, "&Copy Link\tCtrl+C")
         self.Bind(wx.EVT_MENU, self.on_copy_link, copy_item)
 
         # --- CÁC ITEM ĐẶC THÙ (Dùng if để kiểm tra) ---
@@ -727,7 +769,7 @@ class TeTubeFrame(wx.Frame):
             self.Bind(wx.EVT_MENU, self.on_remove_history, remove_item)
 
         # --- ITEM TẢI XUỐNG CHUNG ---
-        download_item = menu.Append(wx.ID_ANY, "&Download")
+        download_item = menu.Append(wx.ID_ANY, "&Download\tCtrl+Shift+D")
         self.Bind(wx.EVT_MENU, download_handler, download_item)
 
         self.PopupMenu(menu)
