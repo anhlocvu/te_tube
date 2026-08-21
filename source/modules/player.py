@@ -40,7 +40,10 @@ class PlayerFrame(wx.Frame):
         self.audio_only = audio_only
         self.video_title = title
         
-        self.instance = vlc.Instance()
+        if self.audio_only:
+            self.instance = vlc.Instance(["--no-video"])
+        else:
+            self.instance = vlc.Instance()
         self.media_player = self.instance.media_player_new()
         
         # Set output device if configured
@@ -66,12 +69,13 @@ class PlayerFrame(wx.Frame):
         self.videopanel = wx.Panel(self.panel)
         self.videopanel.SetBackgroundColour(wx.BLACK)
         
-        if os.name == 'nt':
-            self.media_player.set_hwnd(self.videopanel.GetHandle())
-        elif sys.platform == 'linux':
-            self.media_player.set_xwindow(self.videopanel.GetHandle())
-        elif sys.platform == 'darwin':
-            self.media_player.set_nsobject(self.videopanel.GetHandle())
+        if not self.audio_only:
+            if os.name == 'nt':
+                self.media_player.set_hwnd(self.videopanel.GetHandle())
+            elif sys.platform == 'linux':
+                self.media_player.set_xwindow(self.videopanel.GetHandle())
+            elif sys.platform == 'darwin':
+                self.media_player.set_nsobject(self.videopanel.GetHandle())
             
         vbox.Add(self.videopanel, 1, wx.EXPAND | wx.ALL, 0)
         
@@ -300,11 +304,30 @@ class PlayerFrame(wx.Frame):
 
 
 def _get_stream_url(url, audio_only):
+    import shutil
     ytdlp_path = os.path.join(os.getcwd(), "lib", "yt-dlp.exe")
     if not os.path.exists(ytdlp_path):
         ytdlp_path = "yt-dlp"
     
-    cmd = [ytdlp_path, "-j", "-f", "bestaudio" if audio_only else "best", url]
+    cmd = [ytdlp_path, "-j"]
+    
+    # Dynamic JS runtime detection to ensure portability
+    runtime = None
+    for rt in ['node', 'deno', 'bun', 'qjs', 'quickjs']:
+        if shutil.which(rt):
+            runtime = rt
+            break
+    if runtime:
+        cmd += ["--js-runtimes", runtime]
+        
+    # For both video and audio, we force client types that provide format 18 (mp4 progressive)
+    # This prevents the 10-second seek lag caused by YouTube's throttling of DASH audio-only streams in VLC.
+    cmd += ["--extractor-args", "youtube:player_client=web,mweb,android,tv"]
+    # Use -f b to get the best pre-merged progressive format (format 18)
+    cmd += ["-f", "b"]
+        
+    cmd += [url]
+    
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW if os.name=='nt' else 0)
     stdout, stderr = process.communicate()
     
