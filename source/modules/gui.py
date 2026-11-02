@@ -6,7 +6,9 @@ import wx.lib.newevent
 import json
 import webbrowser
 from modules.search_engine import search_youtube
-from modules.player import play_video
+import sys
+import ctypes
+from modules.player import play_video, close_current_player
 from modules.app_updater import get_latest_version, run_updater
 import speech_recognition as sr
 from modules.settings_manager import load_settings, save_settings, get_download_dir, get_voice_language, get_voice_auto_search, DEFAULT_DOWNLOAD_DIR
@@ -52,7 +54,64 @@ class TeTubeFrame(wx.Frame):
         self.clipboard_timer.Start(1000) # Check every 1 second
         
         # Check for app updates
+        self.Bind(wx.EVT_CLOSE, self.on_close)
         wx.CallAfter(self.check_for_app_updates)
+
+    def on_close(self, event):
+        """Stops background timers, cleans up temp files, and terminates the process immediately."""
+        try:
+            self.Hide()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "clipboard_timer") and self.clipboard_timer.IsRunning():
+                self.clipboard_timer.Stop()
+        except Exception:
+            pass
+        try:
+            close_current_player(fast_exit=True)
+        except Exception:
+            pass
+        _force_exit_process(0)
+
+    def _get_restore_focus_target(self):
+        """Returns the control inside TeTubeFrame that should receive focus after a modal/player closes."""
+        focused = wx.Window.FindFocus()
+        if focused and focused is not self and not isinstance(focused, wx.Panel):
+            curr = focused
+            while curr is not None:
+                if curr is self:
+                    return focused
+                curr = curr.GetParent()
+        return self._get_active_tab_focus_target()
+
+    def _get_active_tab_focus_target(self):
+        """Returns the primary list/input control for the currently selected notebook tab."""
+        sel = self.notebook.GetSelection()
+        if sel == 0:
+            if self.result_list.GetCount() > 0:
+                return self.result_list
+            return self.search_input
+        elif sel == 1:
+            return self.link_input
+        elif sel == 2:
+            return self.favorite_list
+        elif sel == 3:
+            return self.history_list
+        return self.search_input
+
+    def restore_list_focus(self):
+        """Restores keyboard focus to the active tab's list/control and ensures a valid selection."""
+        try:
+            if not self:
+                return
+        except RuntimeError:
+            return
+        target = self._get_active_tab_focus_target()
+        if target:
+            if isinstance(target, wx.ListBox) and target.GetCount() > 0 and target.GetSelection() == wx.NOT_FOUND:
+                target.SetSelection(0)
+            target.SetFocus()
 
     def set_accessible_name(self, control, name):
         """Safely sets the accessible name for a control."""
@@ -328,12 +387,16 @@ class TeTubeFrame(wx.Frame):
         for item in self.favorites:
             display_text = f"{item['title']} - {item.get('uploader', 'Unknown')}"
             self.favorite_list.Append(display_text)
+        if self.favorite_list.GetCount() > 0 and self.favorite_list.GetSelection() == wx.NOT_FOUND:
+            self.favorite_list.SetSelection(0)
 
     def update_history_listbox(self):
         self.history_list.Clear()
         for item in reversed(self.history): # Show newest first
             display_text = f"{item['title']} - {item.get('uploader', 'Unknown')}"
             self.history_list.Append(display_text)
+        if self.history_list.GetCount() > 0 and self.history_list.GetSelection() == wx.NOT_FOUND:
+            self.history_list.SetSelection(0)
 
     def add_to_history(self, video_data):
         # Check if already in history, remove old entry and add to top
@@ -409,7 +472,8 @@ class TeTubeFrame(wx.Frame):
 
     def play_url(self, url, title="Unknown Video", audio_only=False):
         # Create and show the modal preparing dialog
-        dialog = PlayProgressDialog(self, url, title, audio_only)
+        saved_focus = self._get_restore_focus_target()
+        dialog = PlayProgressDialog(self, url, title, audio_only, previous_focus=saved_focus)
         dialog.ShowModal()
         dialog.Destroy()
 
@@ -1317,7 +1381,7 @@ class SearchProgressDialog(wx.Dialog):
         self.EndModal(wx.ID_OK)
 
 class PlayProgressDialog(wx.Dialog):
-    def __init__(self, parent, url, title, audio_only):
+    def __init__(self, parent, url, title, audio_only, previous_focus=None):
         super().__init__(parent, title="Playing", size=(350, 150), style=wx.CAPTION)
         self.parent = parent
         
@@ -1344,7 +1408,7 @@ class PlayProgressDialog(wx.Dialog):
         def on_start(error=None):
             wx.PostEvent(self, PlayEvent(error=error))
             
-        play_video(url, title=title, audio_only=audio_only, on_start_callback=on_start)
+        play_video(url, title=title, audio_only=audio_only, on_start_callback=on_start, previous_focus=previous_focus)
         
         self.Bind(EVT_PLAY_READY, self.on_ready)
 
@@ -1467,8 +1531,26 @@ class DownloadOptionsDialog(wx.Dialog):
         self.parent.start_download(self.url, self.video_title, fmt, start_time, end_time)
         self.EndModal(wx.ID_OK)
 
+def _force_exit_process(exit_code=0):
+    """Immediately terminates the current process at the OS kernel level without Loader Lock deadlocks."""
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+    if os.name == "nt":
+        try:
+            kernel32 = ctypes.windll.kernel32
+            kernel32.TerminateProcess(kernel32.GetCurrentProcess(), int(exit_code))
+        except Exception:
+            pass
+    os._exit(exit_code)
+
+
 def start_gui():
     app = wx.App()
     frame = TeTubeFrame()
     frame.Show()
+    app.SetTopWindow(frame)
     app.MainLoop()
+    _force_exit_process(0)

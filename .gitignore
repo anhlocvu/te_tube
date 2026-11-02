@@ -8,3 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+source/settings.ini
+source/watch_history.json
